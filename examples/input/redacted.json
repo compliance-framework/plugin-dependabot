@@ -1,0 +1,252 @@
+[
+  {
+    "number": 10,
+    "state": "open",
+    "dependency": {
+      "package": {
+        "ecosystem": "go",
+        "name": "github.com/containerd/containerd"
+      },
+      "manifest_path": "go.mod",
+      "scope": "runtime"
+    },
+    "security_vulnerability": {
+      "package": {
+        "ecosystem": "go",
+        "name": "github.com/containerd/containerd"
+      },
+      "severity": "medium",
+      "vulnerable_version_range": "\u003e= 1.7.0-beta.0, \u003c 1.7.27",
+      "first_patched_version": {
+        "identifier": "1.7.27"
+      }
+    },
+    "url": "https://api.github.com/repos/compliance-framework/configuration-service/dependabot/alerts/10",
+    "html_url": "https://github.com/compliance-framework/configuration-service/security/dependabot/10",
+    "created_at": "2025-03-17T21:27:24Z",
+    "updated_at": "2025-03-17T21:27:24Z"
+  },
+  {
+    "number": 9,
+    "state": "open",
+    "dependency": {
+      "package": {
+        "ecosystem": "go",
+        "name": "golang.org/x/net"
+      },
+      "manifest_path": "go.mod",
+      "scope": "runtime"
+    },
+    "security_vulnerability": {
+      "package": {
+        "ecosystem": "go",
+        "name": "golang.org/x/net"
+      },
+      "severity": "medium",
+      "vulnerable_version_range": "\u003c 0.36.0",
+      "first_patched_version": {
+        "identifier": "0.36.0"
+      }
+    },
+    "url": "https://api.github.com/repos/compliance-framework/configuration-service/dependabot/alerts/9",
+    "html_url": "https://github.com/compliance-framework/configuration-service/security/dependabot/9",
+    "created_at": "2025-03-13T01:46:40Z",
+    "updated_at": "2025-03-13T01:46:40Z"
+  },
+  {
+    "number": 7,
+    "state": "fixed",
+    "dependency": {
+      "package": {
+        "ecosystem": "go",
+        "name": "golang.org/x/crypto"
+      },
+      "manifest_path": "go.mod",
+      "scope": "runtime"
+    },
+    "security_vulnerability": {
+      "package": {
+        "ecosystem": "go",
+        "name": "golang.org/x/crypto"
+      },
+      "severity": "critical",
+      "vulnerable_version_range": "\u003c 0.31.0",
+      "first_patched_version": {
+        "identifier": "0.31.0"
+      }
+    },
+    "url": "https://api.github.com/repos/compliance-framework/configuration-service/dependabot/alerts/7",
+    "html_url": "https://github.com/compliance-framework/configuration-service/security/dependabot/7",
+    "created_at": "2024-12-11T23:19:54Z",
+    "updated_at": "2024-12-17T14:45:16Z",
+    "fixed_at": "2024-12-17T14:45:16Z"
+  },
+  {
+    "number": 6,
+    "state": "fixed",
+    "dependency": {
+      "package": {
+        "ecosystem": "go",
+        "name": "golang.org/x/net"
+      },
+      "manifest_path": "go.mod",
+      "scope": "runtime"
+    },
+    "security_vulnerability": {
+      "package": {
+        "ecosystem": "go",
+        "name": "golang.org/x/net"
+      },
+      "severity": "medium",
+      "vulnerable_version_range": "\u003c 0.23.0",
+      "first_patched_version": {
+        "identifier": "0.23.0"
+      }
+    },
+    "url": "https://api.github.com/repos/compliance-framework/configuration-service/dependabot/alerts/6",
+    "html_url": "https://github.com/compliance-framework/configuration-service/security/dependabot/6",
+    "created_at": "2024-04-19T12:18:50Z",
+    "updated_at": "2024-12-16T11:45:13Z",
+    "fixed_at": "2024-12-16T11:45:13Z"
+  },
+  {
+    "number": 5,
+    "state": "fixed",
+    "dependency": {
+      "package": {
+        "ecosystem": "go",
+        "name": "golang.org/x/crypto"
+      },
+      "manifest_path": "go.mod",
+      "scope": "runtime"
+    },
+    "security_vulnerability": {
+      "package": {
+        "ecosystem": "go",
+        "name": "golang.org/x/crypto"
+      },
+      "severity": "medium",
+      "vulnerable_version_range": "\u003c 0.17.0",
+      "first_patched_version": {
+        "identifier": "0.17.0"
+      }
+    },
+    "url": "https://api.github.com/repos/compliance-framework/configuration-service/dependabot/alerts/5",
+    "html_url": "https://github.com/compliance-framework/configuration-service/security/dependabot/5",
+    "created_at": "2023-12-18T23:31:22Z",
+    "updated_at": "2024-12-16T11:45:13Z",
+    "fixed_at": "2024-12-16T11:45:13Z"
+  },
+  {
+    "number": 4,
+    "state": "fixed",
+    "dependency": {
+      "package": {
+        "ecosystem": "go",
+        "name": "github.com/nats-io/nkeys"
+      },
+      "manifest_path": "go.mod",
+      "scope": "runtime"
+    },
+    "security_vulnerability": {
+      "package": {
+        "ecosystem": "go",
+        "name": "github.com/nats-io/nkeys"
+      },
+      "severity": "high",
+      "vulnerable_version_range": "\u003e= 0.4.0, \u003c= 0.4.5",
+      "first_patched_version": {
+        "identifier": "0.4.6"
+      }
+    },
+    "url": "https://api.github.com/repos/compliance-framework/configuration-service/dependabot/alerts/4",
+    "html_url": "https://github.com/compliance-framework/configuration-service/security/dependabot/4",
+    "created_at": "2023-10-31T21:20:14Z",
+    "updated_at": "2023-11-22T14:29:34Z",
+    "fixed_at": "2023-11-22T14:29:34Z"
+  },
+  {
+    "number": 3,
+    "state": "fixed",
+    "dependency": {
+      "package": {
+        "ecosystem": "go",
+        "name": "github.com/nats-io/nats-server/v2"
+      },
+      "manifest_path": "go.mod",
+      "scope": "runtime"
+    },
+    "security_vulnerability": {
+      "package": {
+        "ecosystem": "go",
+        "name": "github.com/nats-io/nats-server/v2"
+      },
+      "severity": "high",
+      "vulnerable_version_range": "\u003e= 2.2.0, \u003c 2.9.23",
+      "first_patched_version": {
+        "identifier": "2.9.23"
+      }
+    },
+    "url": "https://api.github.com/repos/compliance-framework/configuration-service/dependabot/alerts/3",
+    "html_url": "https://github.com/compliance-framework/configuration-service/security/dependabot/3",
+    "created_at": "2023-10-19T16:14:57Z",
+    "updated_at": "2023-10-23T14:18:41Z",
+    "fixed_at": "2023-10-23T14:18:41Z"
+  },
+  {
+    "number": 2,
+    "state": "fixed",
+    "dependency": {
+      "package": {
+        "ecosystem": "go",
+        "name": "golang.org/x/net"
+      },
+      "manifest_path": "go.mod",
+      "scope": "runtime"
+    },
+    "security_vulnerability": {
+      "package": {
+        "ecosystem": "go",
+        "name": "golang.org/x/net"
+      },
+      "severity": "medium",
+      "vulnerable_version_range": "\u003c 0.17.0",
+      "first_patched_version": {
+        "identifier": "0.17.0"
+      }
+    },
+    "url": "https://api.github.com/repos/compliance-framework/configuration-service/dependabot/alerts/2",
+    "html_url": "https://github.com/compliance-framework/configuration-service/security/dependabot/2",
+    "created_at": "2023-10-14T00:18:28Z",
+    "updated_at": "2023-10-23T14:18:41Z",
+    "fixed_at": "2023-10-23T14:18:41Z"
+  },
+  {
+    "number": 1,
+    "state": "fixed",
+    "dependency": {
+      "package": {
+        "ecosystem": "go",
+        "name": "golang.org/x/net"
+      },
+      "manifest_path": "go.mod",
+      "scope": "runtime"
+    },
+    "security_vulnerability": {
+      "package": {
+        "ecosystem": "go",
+        "name": "golang.org/x/net"
+      },
+      "severity": "high",
+      "vulnerable_version_range": "\u003c 0.17.0",
+      "first_patched_version": {
+        "identifier": "0.17.0"
+      }
+    },
+    "url": "https://api.github.com/repos/compliance-framework/configuration-service/dependabot/alerts/1",
+    "html_url": "https://github.com/compliance-framework/configuration-service/security/dependabot/1",
+    "created_at": "2023-10-11T22:57:28Z",
+    "updated_at": "2023-10-23T14:18:41Z",
+    "fixed_at": "2023-10-23T14:18:41Z"
+  }
+]

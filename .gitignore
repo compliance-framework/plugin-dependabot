@@ -1,0 +1,7 @@
+.idea/
+dist/
+.DS_Store
+cf-plugin-local-ssh
+plugin
+.env
+.envrc
