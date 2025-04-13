@@ -19,7 +19,7 @@ func TestDependabotPlugin_Integration_FetchRepositories(t *testing.T) {
 		logger: hclog.NewNullLogger(),
 		config: &PluginConfig{
 			Token:        os.Getenv("GITHUB_TOKEN"),
-			Organisation: policy_manager.Pointer("compliance-framework"),
+			Organization: policy_manager.Pointer("compliance-framework"),
 		},
 		githubClient: github.NewClient(nil).WithAuthToken(os.Getenv("GITHUB_TOKEN")),
 	}
@@ -59,7 +59,7 @@ func TestDependabotPlugin_Integration_FetchRepositoryDependabotAlerts(t *testing
 		}),
 		config: &PluginConfig{
 			Token:        os.Getenv("GITHUB_TOKEN"),
-			Organisation: policy_manager.Pointer("compliance-framework"),
+			Organization: policy_manager.Pointer("compliance-framework"),
 		},
 		githubClient: github.NewClient(nil).WithAuthToken(os.Getenv("GITHUB_TOKEN")),
 	}
