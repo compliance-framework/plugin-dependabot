@@ -15,7 +15,7 @@ import (
 
 type PluginConfig struct {
 	Token        string  `mapstructure:"token"`
-	Organisation *string `mapstructure:"organisation"`
+	Organization *string `mapstructure:"organization"`
 	User         *string `mapstructure:"user"`
 }
 
@@ -114,7 +114,7 @@ func (l *DependabotPlugin) FetchRepositories(ctx context.Context) (<-chan *githu
 		done := false
 		for !done {
 			l.logger.Trace("Fetching repositories from Github API")
-			repos, _, err := l.githubClient.Repositories.ListByOrg(ctx, *l.config.Organisation, &github.RepositoryListByOrgOptions{
+			repos, _, err := l.githubClient.Repositories.ListByOrg(ctx, *l.config.Organization, &github.RepositoryListByOrgOptions{
 				ListOptions: github.ListOptions{
 					Page: page,
 				},
@@ -162,7 +162,7 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 				"provider":        "github",
 				"type":            "repository",
 				"repository-name": repo.GetName(),
-				"organisation":    repo.GetOwner().GetLogin(),
+				"organization":    repo.GetOwner().GetLogin(),
 				"url":             repo.GetURL(),
 			},
 			Title: policyManager.Pointer("Software Repository"),
@@ -180,24 +180,24 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 			},
 		},
 		{
-			Type: "software-organisation",
+			Type: "software-organization",
 			Attributes: map[string]string{
 				"provider":          "github",
-				"type":              "organisation",
-				"organisation-name": repo.GetOrganization().GetName(),
-				"organisation-path": repo.GetOrganization().GetLogin(),
+				"type":              "organization",
+				"organization-name": repo.GetOrganization().GetName(),
+				"organization-path": repo.GetOrganization().GetLogin(),
 			},
-			Title: policyManager.Pointer("Software Organisation"),
+			Title: policyManager.Pointer("Software Organization"),
 			Props: []*proto.Property{
 				{
-					Name:  "organisation",
+					Name:  "organization",
 					Value: repo.GetOrganization().GetName(),
 				},
 			},
 			Links: []*proto.Link{
 				{
 					Href: repo.GetOrganization().GetURL(),
-					Text: policyManager.Pointer("Organisation URL"),
+					Text: policyManager.Pointer("Organization URL"),
 				},
 			},
 		},
