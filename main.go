@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	policyManager "github.com/compliance-framework/agent/policy-manager"
 	"github.com/compliance-framework/agent/runner"
 	"github.com/compliance-framework/agent/runner/proto"
@@ -65,22 +66,15 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 				}, err
 			}
 
-			observations, findings, err := l.EvaluatePolicies(ctx, repo, alerts, req)
+			evidences, err := l.EvaluatePolicies(ctx, repo, alerts, req)
 			if err != nil {
 				return &proto.EvalResponse{
 					Status: proto.ExecutionStatus_FAILURE,
 				}, err
 			}
 
-			if err = apiHelper.CreateObservations(ctx, observations); err != nil {
-				l.logger.Error("Failed to send observations", "error", err)
-				return &proto.EvalResponse{
-					Status: proto.ExecutionStatus_FAILURE,
-				}, err
-			}
-
-			if err = apiHelper.CreateFindings(ctx, findings); err != nil {
-				l.logger.Error("Failed to send findings", "error", err)
+			if err = apiHelper.CreateEvidence(ctx, evidences); err != nil {
+				l.logger.Error("Failed to send evidence", "error", err)
 				return &proto.EvalResponse{
 					Status: proto.ExecutionStatus_FAILURE,
 				}, err
@@ -146,62 +140,14 @@ func (l *DependabotPlugin) FetchRepositories(ctx context.Context) (<-chan *githu
 	return repositories, errs
 }
 
-func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Repository, alerts []*github.DependabotAlert, req *proto.EvalRequest) ([]*proto.Observation, []*proto.Finding, error) {
+func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Repository, alerts []*github.DependabotAlert, req *proto.EvalRequest) ([]*proto.Evidence, error) {
 	var accumulatedErrors error
 
 	activities := make([]*proto.Activity, 0)
-	findings := make([]*proto.Finding, 0)
-	observations := make([]*proto.Observation, 0)
+	evidences := make([]*proto.Evidence, 0)
 	activities = append(activities, &proto.Activity{
 		Title: "Collect Repository Dependabot Alerts",
 	})
-	subjects := []*proto.SubjectReference{
-		{
-			Type: "software-repository",
-			Attributes: map[string]string{
-				"provider":        "github",
-				"type":            "repository",
-				"repository-name": repo.GetName(),
-				"organization":    repo.GetOwner().GetLogin(),
-				"url":             repo.GetURL(),
-			},
-			Title: policyManager.Pointer("Software Repository"),
-			Props: []*proto.Property{
-				{
-					Name:  "repository",
-					Value: repo.GetFullName(),
-				},
-			},
-			Links: []*proto.Link{
-				{
-					Href: repo.GetURL(),
-					Text: policyManager.Pointer("Repository URL"),
-				},
-			},
-		},
-		{
-			Type: "software-organization",
-			Attributes: map[string]string{
-				"provider":          "github",
-				"type":              "organization",
-				"organization-name": repo.GetOrganization().GetName(),
-				"organization-path": repo.GetOrganization().GetLogin(),
-			},
-			Title: policyManager.Pointer("Software Organization"),
-			Props: []*proto.Property{
-				{
-					Name:  "organization",
-					Value: repo.GetOrganization().GetName(),
-				},
-			},
-			Links: []*proto.Link{
-				{
-					Href: repo.GetOrganization().GetURL(),
-					Text: policyManager.Pointer("Organization URL"),
-				},
-			},
-		},
-	}
 	actors := []*proto.OriginActor{
 		{
 			Title: "The Continuous Compliance Framework",
@@ -228,14 +174,72 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 			Props: nil,
 		},
 	}
-	components := []*proto.ComponentReference{
+	components := []*proto.Component{
 		{
+			Identifier:  "common-components/github-repository",
+			Type:        "service",
+			Title:       "GitHub Repository",
+			Description: "A GitHub repository is a discrete codebase or project workspace hosted within a GitHub Organization or user account. It contains source code, documentation, configuration files, workflows, and version history managed through Git. Repositories support access control, issues, pull requests, branch protection, and automated CI/CD pipelines.",
+			Purpose:     "To serve as the authoritative and version-controlled location for a specific software project, enabling secure collaboration, code review, automation, and traceability of changes throughout the development lifecycle.",
+		},
+		{
+			Identifier:  "common-components/version-control",
+			Type:        "service",
+			Title:       "Version Control",
+			Description: "Version control systems track and manage changes to source code and configuration files over time. They provide collaboration, traceability, and the ability to audit or revert code to previous states. Version control enables parallel development workflows and structured release management across software projects.",
+			Purpose:     "To maintain a complete and auditable history of code and configuration changes, enable collaboration across distributed teams, and support secure and traceable software development lifecycle (SDLC) practices.",
+		},
+	}
+	inventory := []*proto.InventoryItem{
+		{
+			Identifier: fmt.Sprintf("github-repository/%s", repo.GetFullName()),
+			Type:       "github-repository",
+			Title:      fmt.Sprintf("Github Repository [%s]", repo.GetName()),
+			Props: []*proto.Property{
+				{
+					Name:  "name",
+					Value: repo.GetName(),
+				},
+				{
+					Name:  "path",
+					Value: repo.GetFullName(),
+				},
+				{
+					Name:  "organization",
+					Value: repo.GetOwner().GetName(),
+				},
+			},
+			Links: []*proto.Link{
+				{
+					Href: repo.GetURL(),
+					Text: policyManager.Pointer("Repository URL"),
+				},
+			},
+			ImplementedComponents: []*proto.InventoryItemImplementedComponent{
+				{
+					Identifier: "common-components/github-repository",
+				},
+				{
+					Identifier: "common-components/version-control",
+				},
+			},
+		},
+	}
+	subjects := []*proto.Subject{
+		{
+			Type:       proto.SubjectType_SUBJECT_TYPE_INVENTORY_ITEM,
+			Identifier: fmt.Sprintf("github-repository/%s", repo.GetFullName()),
+		},
+		{
+			Type:       proto.SubjectType_SUBJECT_TYPE_INVENTORY_ITEM,
+			Identifier: fmt.Sprintf("github-organization/%s", repo.GetOwner().GetLogin()),
+		},
+		{
+			Type:       proto.SubjectType_SUBJECT_TYPE_COMPONENT,
 			Identifier: "common-components/github-repository",
 		},
 		{
-			Identifier: "common-components/software-repository",
-		},
-		{
+			Type:       proto.SubjectType_SUBJECT_TYPE_COMPONENT,
 			Identifier: "common-components/version-control",
 		},
 	}
@@ -247,26 +251,25 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 			map[string]string{
 				"provider":     "github",
 				"type":         "repository",
-				"repository":   repo.GetFullName(),
-				"_policy_path": policyPath,
+				"repository":   repo.GetName(),
+				"organization": repo.GetOwner().GetLogin(),
 			},
 			subjects,
 			components,
+			inventory,
 			actors,
 			activities,
 		)
-		obs, finds, err := processor.GenerateResults(ctx, policyPath, alerts)
-		observations = slices.Concat(observations, obs)
-		findings = slices.Concat(findings, finds)
+		evidence, err := processor.GenerateResults(ctx, policyPath, alerts)
+		evidences = slices.Concat(evidences, evidence)
 		if err != nil {
 			accumulatedErrors = errors.Join(accumulatedErrors, err)
 		}
 	}
 
-	l.logger.Info("collected observations", "count", len(observations))
-	l.logger.Info("collected findings", "count", len(findings))
+	l.logger.Info("collected evidence", "count", len(evidences))
 
-	return observations, findings, accumulatedErrors
+	return evidences, accumulatedErrors
 }
 
 func main() {
