@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+
 	policyManager "github.com/compliance-framework/agent/policy-manager"
 	"github.com/compliance-framework/agent/runner"
 	"github.com/compliance-framework/agent/runner/proto"
@@ -11,13 +13,13 @@ import (
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/mitchellh/mapstructure"
-	"slices"
 )
 
 type PluginConfig struct {
-	Token        string  `mapstructure:"token"`
-	Organization *string `mapstructure:"organization"`
-	User         *string `mapstructure:"user"`
+	Token            string  `mapstructure:"token"`
+	Organization     *string `mapstructure:"organization"`
+	User             *string `mapstructure:"user"`
+	SecurityTeamName *string `mapstructure:"security-team-name"`
 }
 
 type DependabotPlugin struct {
@@ -29,7 +31,6 @@ type DependabotPlugin struct {
 }
 
 func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.ConfigureResponse, error) {
-	//l.config = req.GetConfig()
 	config := &PluginConfig{}
 	mapstructure.Decode(req.GetConfig(), config)
 	l.config = config
@@ -42,7 +43,20 @@ func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.Config
 func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelper) (*proto.EvalResponse, error) {
 	ctx := context.TODO()
 	repochan, errchan := l.FetchRepositories(ctx)
+
+	var securityTeamMembers []*github.User
+	if *l.config.SecurityTeamName != "" {
+		var err error
+		securityTeamMembers, err = l.FetchSecurityTeamMembers(ctx)
+		if err != nil {
+			return &proto.EvalResponse{
+				Status: proto.ExecutionStatus_FAILURE,
+			}, err
+		}
+	}
+
 	done := false
+
 	for !done {
 		select {
 		case err, ok := <-errchan:
@@ -66,7 +80,14 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 				}, err
 			}
 
-			evidences, err := l.EvaluatePolicies(ctx, repo, alerts, req)
+			input := make(map[string]interface{})
+			input["alerts"] = alerts
+			if securityTeamMembers != nil {
+				l.logger.Info(fmt.Sprintf("Assigning security team members: %v", securityTeamMembers))
+				input["security_team_members"] = securityTeamMembers
+			}
+
+			evidences, err := l.EvaluatePolicies(ctx, repo, &input, req)
 			if err != nil {
 				return &proto.EvalResponse{
 					Status: proto.ExecutionStatus_FAILURE,
@@ -85,6 +106,14 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 	return &proto.EvalResponse{
 		Status: proto.ExecutionStatus_SUCCESS,
 	}, nil
+}
+
+func (l *DependabotPlugin) FetchSecurityTeamMembers(ctx context.Context) ([]*github.User, error) {
+	members, _, err := l.githubClient.Teams.ListTeamMembersBySlug(ctx, *l.config.Organization, *l.config.SecurityTeamName, nil)
+	if err != nil {
+		return nil, err
+	}
+	return members, err
 }
 
 func (l *DependabotPlugin) FetchRepositoryDependabotAlerts(ctx context.Context, repo *github.Repository) ([]*github.DependabotAlert, error) {
@@ -140,7 +169,7 @@ func (l *DependabotPlugin) FetchRepositories(ctx context.Context) (<-chan *githu
 	return repositories, errs
 }
 
-func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Repository, alerts []*github.DependabotAlert, req *proto.EvalRequest) ([]*proto.Evidence, error) {
+func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Repository, input *map[string]interface{}, req *proto.EvalRequest) ([]*proto.Evidence, error) {
 	var accumulatedErrors error
 
 	activities := make([]*proto.Activity, 0)
@@ -260,7 +289,7 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 			actors,
 			activities,
 		)
-		evidence, err := processor.GenerateResults(ctx, policyPath, alerts)
+		evidence, err := processor.GenerateResults(ctx, policyPath, input)
 		evidences = slices.Concat(evidences, evidence)
 		if err != nil {
 			accumulatedErrors = errors.Join(accumulatedErrors, err)
