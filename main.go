@@ -83,7 +83,6 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 			input := make(map[string]interface{})
 			input["alerts"] = alerts
 			if securityTeamMembers != nil {
-				l.logger.Info(fmt.Sprintf("Assigning security team members: %v", securityTeamMembers))
 				input["security_team_members"] = securityTeamMembers
 			}
 
