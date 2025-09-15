@@ -24,10 +24,14 @@ type PluginConfig struct {
 
 type DependabotPlugin struct {
 	logger hclog.Logger
-	data   map[string]interface{}
-	config *PluginConfig
 
+	config       *PluginConfig
 	githubClient *github.Client
+}
+
+type DependabotData struct {
+	Alerts              []*github.DependabotAlert
+	SecurityTeamMembers []*github.User
 }
 
 func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.ConfigureResponse, error) {
@@ -80,13 +84,14 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 				}, err
 			}
 
-			input := make(map[string]interface{})
-			input["alerts"] = alerts
+			data := &DependabotData{
+				Alerts: alerts,
+			}
 			if securityTeamMembers != nil {
-				input["security_team_members"] = securityTeamMembers
+				data.SecurityTeamMembers = securityTeamMembers
 			}
 
-			evidences, err := l.EvaluatePolicies(ctx, repo, &input, req)
+			evidences, err := l.EvaluatePolicies(ctx, repo, data, req)
 			if err != nil {
 				return &proto.EvalResponse{
 					Status: proto.ExecutionStatus_FAILURE,
@@ -168,7 +173,7 @@ func (l *DependabotPlugin) FetchRepositories(ctx context.Context) (<-chan *githu
 	return repositories, errs
 }
 
-func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Repository, input *map[string]interface{}, req *proto.EvalRequest) ([]*proto.Evidence, error) {
+func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Repository, data *DependabotData, req *proto.EvalRequest) ([]*proto.Evidence, error) {
 	var accumulatedErrors error
 
 	activities := make([]*proto.Activity, 0)
@@ -288,7 +293,7 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 			actors,
 			activities,
 		)
-		evidence, err := processor.GenerateResults(ctx, policyPath, input)
+		evidence, err := processor.GenerateResults(ctx, policyPath, data)
 		evidences = slices.Concat(evidences, evidence)
 		if err != nil {
 			accumulatedErrors = errors.Join(accumulatedErrors, err)
