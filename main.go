@@ -49,7 +49,7 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 	repochan, errchan := l.FetchRepositories(ctx)
 
 	var securityTeamMembers []*github.User
-	if *l.config.SecurityTeamName != "" {
+	if l.config.SecurityTeamName != nil && *l.config.SecurityTeamName != "" {
 		var err error
 		securityTeamMembers, err = l.FetchSecurityTeamMembers(ctx)
 		if err != nil {
