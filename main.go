@@ -117,7 +117,7 @@ func (l *DependabotPlugin) FetchSecurityTeamMembers(ctx context.Context) ([]*git
 	if err != nil {
 		return nil, err
 	}
-	return members, err
+	return members, nil
 }
 
 func (l *DependabotPlugin) FetchRepositoryDependabotAlerts(ctx context.Context, repo *github.Repository) ([]*github.DependabotAlert, error) {
