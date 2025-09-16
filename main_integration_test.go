@@ -94,5 +94,5 @@ func TestDependabotPlugin_Integration_FetchTeamMembers(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	t.Log("Successfully collected securtiy team members", members)
+	t.Log("Successfully collected security team members", members)
 }
