@@ -60,6 +60,8 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 	}
 
 	done := false
+	// Track permission issues during alert collection
+	reposAlertsPermissionDenied := make([]string, 0)
 
 	for !done {
 		select {
@@ -79,6 +81,11 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 
 			alerts, err := l.FetchRepositoryDependabotAlerts(ctx, repo)
 			if err != nil {
+				if isPermissionError(err) {
+					l.logger.Warn("Skipping repository due to insufficient permissions for alerts fetch", "repo", repo.GetFullName(), "error", err)
+					reposAlertsPermissionDenied = append(reposAlertsPermissionDenied, repo.GetFullName())
+					continue
+				}
 				return &proto.EvalResponse{
 					Status: proto.ExecutionStatus_FAILURE,
 				}, err
@@ -105,6 +112,10 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 				}, err
 			}
 		}
+	}
+
+	if len(reposAlertsPermissionDenied) > 0 {
+		l.logger.Info("Repositories skipped due to insufficient permissions (alerts)", "count", len(reposAlertsPermissionDenied), "repos", reposAlertsPermissionDenied)
 	}
 
 	return &proto.EvalResponse{
@@ -139,6 +150,10 @@ func (l *DependabotPlugin) FetchRepositories(ctx context.Context) (<-chan *githu
 		defer close(errs)
 		page := 1
 		done := false
+		// Tracking for logging visibility
+		emittedRepos := make([]string, 0)
+		noPermissionRepos := make([]string, 0)
+		archivedSkipped := 0
 		for !done {
 			l.logger.Trace("Fetching repositories from Github API")
 			repos, _, err := l.githubClient.Repositories.ListByOrg(ctx, *l.config.Organization, &github.RepositoryListByOrgOptions{
@@ -153,14 +168,25 @@ func (l *DependabotPlugin) FetchRepositories(ctx context.Context) (<-chan *githu
 				break
 			}
 			for _, repo := range repos {
+				if repo.GetArchived() {
+					archivedSkipped++
+					continue
+				}
+
 				alertsEnabled, _, err := l.githubClient.Repositories.GetVulnerabilityAlerts(ctx, repo.GetOwner().GetLogin(), repo.GetName())
 				if err != nil {
+					if isPermissionError(err) {
+						l.logger.Warn("Skipping repository due to insufficient permissions for vulnerability alerts check", "repo", repo.GetFullName(), "error", err)
+						noPermissionRepos = append(noPermissionRepos, repo.GetFullName())
+						continue
+					}
 					errs <- err
 					done = true
 					break
 				}
-				if !repo.GetArchived() && alertsEnabled {
+				if alertsEnabled {
 					repositories <- repo
+					emittedRepos = append(emittedRepos, repo.GetFullName())
 				}
 			}
 			page++
@@ -168,6 +194,14 @@ func (l *DependabotPlugin) FetchRepositories(ctx context.Context) (<-chan *githu
 				done = true
 				break
 			}
+		}
+		// Emit a summary for engineers to understand visibility
+		l.logger.Info("Repository enumeration summary", "emitted", len(emittedRepos), "skipped_permissions", len(noPermissionRepos), "skipped_archived", archivedSkipped)
+		if len(emittedRepos) > 0 {
+			l.logger.Debug("Repositories with sufficient permissions (and alerts enabled)", "repos", emittedRepos)
+		}
+		if len(noPermissionRepos) > 0 {
+			l.logger.Info("Repositories without sufficient permissions", "repos", noPermissionRepos)
 		}
 	}()
 	return repositories, errs
@@ -195,13 +229,13 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 			Props: nil,
 		},
 		{
-			Title: "Continuous Compliance Framework - Local SSH Plugin",
+			Title: "Continuous Compliance Framework - Dependabot Plugin",
 			Type:  "tool",
 			Links: []*proto.Link{
 				{
-					Href: "https://github.com/compliance-framework/plugin-local-ssh",
+					Href: "https://github.com/compliance-framework/plugin-dependabot",
 					Rel:  policyManager.Pointer("reference"),
-					Text: policyManager.Pointer("The Continuous Compliance Framework' Local SSH Plugin"),
+					Text: policyManager.Pointer("The Continuous Compliance Framework Dependabot Plugin"),
 				},
 			},
 			Props: nil,
@@ -303,6 +337,24 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 	l.logger.Info("collected evidence", "count", len(evidences))
 
 	return evidences, accumulatedErrors
+}
+
+// isPermissionError returns true if the error from the GitHub client indicates
+// a permissions or visibility issue (e.g., 401/403/404).
+func isPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var ger *github.ErrorResponse
+	if errors.As(err, &ger) {
+		if ger.Response != nil {
+			switch ger.Response.StatusCode {
+			case 401, 403, 404:
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func main() {

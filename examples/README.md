@@ -1,11 +1,11 @@
-# Example output from Local SSH plugin
+# Example output from Dependabot plugin
 
-In this folder you'll find example data and policies for the Local SSH Plugin
+In this folder you'll find example data and policies for the Dependabot Plugin
 
 ## Data
 
-In `input/` you'll find an example of the data that is output from the plugin and passed to the policy files. This is 
-what you will write policies against to check for compliance. 
+In `input/` you'll find an example of the data that is output from the plugin and passed to the policy files. This is
+what you will write policies against to check for compliance.
 
 These will be defined as `input` in Rego policies.
 

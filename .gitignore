@@ -5,3 +5,4 @@ cf-plugin-local-ssh
 plugin
 .env
 .envrc
+plugin-*
