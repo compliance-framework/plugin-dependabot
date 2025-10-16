@@ -13,7 +13,7 @@ To authenticate this plugin, you must provide a token which has at minimum the f
 
 ## Integration testing
 
-This plugin contains unit tests as well as integration tests. 
+This plugin contains unit tests as well as integration tests.
 
 The Integration tests need a GitHub token to call to the GitHub API.
 
@@ -33,9 +33,9 @@ package compliance_framework.deny_critical_severity
 
 ## Releases
 
-This plugin is released using goreleaser to build binaries, and GOOCI to upload artifacts to OCI, 
-which will ensure a binary is built for most OS and Architecture combinations. 
+This plugin is released using goreleaser to build binaries, and GOOCI to upload artifacts to OCI,
+which will ensure a binary is built for most OS and Architecture combinations.
 
 You can find the binaries on each release of this plugin in the GitHub releases page.
 
-You can find the OCI implementations in the GitHub Packages page. 
+You can find the OCI implementations in the GitHub Packages page.
