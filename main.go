@@ -126,6 +126,9 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 func (l *DependabotPlugin) FetchSecurityTeamMembers(ctx context.Context) ([]*github.User, error) {
 	members, _, err := l.githubClient.Teams.ListTeamMembersBySlug(ctx, *l.config.Organization, *l.config.SecurityTeamName, nil)
 	if err != nil {
+		if isPermissionError(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return members, nil
@@ -139,6 +142,9 @@ func (l *DependabotPlugin) FetchRepositoryDependabotAlerts(ctx context.Context, 
 		},
 		ListCursorOptions: github.ListCursorOptions{},
 	})
+	if isPermissionError(err) {
+		return nil, nil
+	}
 	return alerts, err
 }
 
