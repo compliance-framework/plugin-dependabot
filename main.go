@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	policyManager "github.com/compliance-framework/agent/policy-manager"
 	"github.com/compliance-framework/agent/runner"
@@ -16,16 +17,24 @@ import (
 )
 
 type PluginConfig struct {
-	Token            string  `mapstructure:"token"`
-	Organization     *string `mapstructure:"organization"`
-	User             *string `mapstructure:"user"`
-	SecurityTeamName *string `mapstructure:"security-team-name"`
+	Token                string  `mapstructure:"token"`
+	Organization         *string `mapstructure:"organization"`
+	IncludedRepositories *string `mapstructure:"included-repositories"`
+	User                 *string `mapstructure:"user"`
+	SecurityTeamName     *string `mapstructure:"security-team-name"`
 }
-
+type ParsedConfig struct {
+	Token                string   `mapstructure:"token"`
+	Organization         *string  `mapstructure:"organization"`
+	IncludedRepositories []string `mapstructure:"included-repositories"`
+	User                 *string  `mapstructure:"user"`
+	SecurityTeamName     *string  `mapstructure:"security-team-name"`
+}
 type DependabotPlugin struct {
 	logger hclog.Logger
 
 	config       *PluginConfig
+	parsedConfig *ParsedConfig
 	githubClient *github.Client
 }
 
@@ -34,12 +43,26 @@ type DependabotData struct {
 	SecurityTeamMembers []*github.User
 }
 
+func (l *DependabotPlugin) ParseConfig() {
+	l.parsedConfig = &ParsedConfig{}
+	if l.config.IncludedRepositories != nil {
+		l.parsedConfig.IncludedRepositories = strings.Split(*l.config.IncludedRepositories, ",")
+		l.logger.Debug("successfully parsed config", "includedRepositories", l.parsedConfig.IncludedRepositories)
+	}
+	l.parsedConfig.Token = l.config.Token
+	l.parsedConfig.Organization = l.config.Organization
+	l.parsedConfig.User = l.config.User
+	l.parsedConfig.SecurityTeamName = l.config.SecurityTeamName
+}
+
 func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.ConfigureResponse, error) {
 	config := &PluginConfig{}
 	mapstructure.Decode(req.GetConfig(), config)
 	l.config = config
+	l.logger.Debug("successfully got config", "includedRepositories", l.config.IncludedRepositories)
 
-	l.githubClient = github.NewClient(nil).WithAuthToken(l.config.Token)
+	l.ParseConfig()
+	l.githubClient = github.NewClient(nil).WithAuthToken(l.parsedConfig.Token)
 
 	return &proto.ConfigureResponse{}, nil
 }
@@ -47,12 +70,13 @@ func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.Config
 func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelper) (*proto.EvalResponse, error) {
 	ctx := context.TODO()
 	repochan, errchan := l.FetchRepositories(ctx)
-
+	l.logger.Debug("Fetching repositories from Github API")
 	var securityTeamMembers []*github.User
-	if l.config.SecurityTeamName != nil && *l.config.SecurityTeamName != "" {
+	if l.parsedConfig.SecurityTeamName != nil && *l.parsedConfig.SecurityTeamName != "" {
 		var err error
 		securityTeamMembers, err = l.FetchSecurityTeamMembers(ctx)
 		if err != nil {
+			l.logger.Error("Failed to fetch security team members from Github API", "error", err)
 			return &proto.EvalResponse{
 				Status: proto.ExecutionStatus_FAILURE,
 			}, err
@@ -70,6 +94,7 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 				done = true
 				continue
 			}
+			l.logger.Debug("Error fetching repositories from Github API", "error", err)
 			return &proto.EvalResponse{
 				Status: proto.ExecutionStatus_FAILURE,
 			}, err
@@ -78,7 +103,7 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 				done = true
 				continue
 			}
-
+			l.logger.Debug("Fetching repository dependabot alerts from Github API", "repo", repo.GetFullName())
 			alerts, err := l.FetchRepositoryDependabotAlerts(ctx, repo)
 			if err != nil {
 				if isPermissionError(err) {
@@ -86,6 +111,7 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 					reposAlertsPermissionDenied = append(reposAlertsPermissionDenied, repo.GetFullName())
 					continue
 				}
+				l.logger.Error("Failed to fetch repository dependabot alerts from Github API", "repo", repo.GetFullName(), "error", err)
 				return &proto.EvalResponse{
 					Status: proto.ExecutionStatus_FAILURE,
 				}, err
@@ -100,13 +126,14 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 
 			evidences, err := l.EvaluatePolicies(ctx, repo, data, req)
 			if err != nil {
+				l.logger.Error("Failed to evaluate policies", "repo", repo.GetFullName(), "error", err)
 				return &proto.EvalResponse{
 					Status: proto.ExecutionStatus_FAILURE,
 				}, err
 			}
 
 			if err = apiHelper.CreateEvidence(ctx, evidences); err != nil {
-				l.logger.Error("Failed to send evidence", "error", err)
+				l.logger.Error("Failed to send evidence", "repo", repo.GetFullName(), "error", err)
 				return &proto.EvalResponse{
 					Status: proto.ExecutionStatus_FAILURE,
 				}, err
@@ -124,7 +151,7 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 }
 
 func (l *DependabotPlugin) FetchSecurityTeamMembers(ctx context.Context) ([]*github.User, error) {
-	members, _, err := l.githubClient.Teams.ListTeamMembersBySlug(ctx, *l.config.Organization, *l.config.SecurityTeamName, nil)
+	members, _, err := l.githubClient.Teams.ListTeamMembersBySlug(ctx, *l.parsedConfig.Organization, *l.parsedConfig.SecurityTeamName, nil)
 	if err != nil {
 		if isPermissionError(err) {
 			return nil, nil
@@ -137,7 +164,6 @@ func (l *DependabotPlugin) FetchSecurityTeamMembers(ctx context.Context) ([]*git
 func (l *DependabotPlugin) FetchRepositoryDependabotAlerts(ctx context.Context, repo *github.Repository) ([]*github.DependabotAlert, error) {
 	alerts, _, err := l.githubClient.Dependabot.ListRepoAlerts(ctx, repo.GetOwner().GetLogin(), repo.GetName(), &github.ListAlertsOptions{
 		ListOptions: github.ListOptions{
-			Page:    1,
 			PerPage: 100,
 		},
 		ListCursorOptions: github.ListCursorOptions{},
@@ -145,6 +171,7 @@ func (l *DependabotPlugin) FetchRepositoryDependabotAlerts(ctx context.Context, 
 	if isPermissionError(err) {
 		return nil, nil
 	}
+	l.logger.Debug("Fetched repository dependabot alerts from Github API", "repo", repo.GetFullName(), "count", len(alerts))
 	return alerts, err
 }
 
@@ -162,19 +189,20 @@ func (l *DependabotPlugin) FetchRepositories(ctx context.Context) (<-chan *githu
 		archivedSkipped := 0
 		for !done {
 			l.logger.Trace("Fetching repositories from Github API")
-			repos, _, err := l.githubClient.Repositories.ListByOrg(ctx, *l.config.Organization, &github.RepositoryListByOrgOptions{
+			repos, _, err := l.githubClient.Repositories.ListByOrg(ctx, *l.parsedConfig.Organization, &github.RepositoryListByOrgOptions{
 				ListOptions: github.ListOptions{
 					Page: page,
 				},
 			})
 			if err != nil {
-				l.logger.Error("Failed while fetching repositories from Github API")
+				l.logger.Error("Failed while fetching repositories from Github API", "error", err)
 				errs <- err
 				done = true
 				break
 			}
 			for _, repo := range repos {
 				if repo.GetArchived() {
+					l.logger.Debug("Skipping archived repository", "repo", repo.GetFullName())
 					archivedSkipped++
 					continue
 				}
@@ -186,11 +214,18 @@ func (l *DependabotPlugin) FetchRepositories(ctx context.Context) (<-chan *githu
 						noPermissionRepos = append(noPermissionRepos, repo.GetFullName())
 						continue
 					}
+					l.logger.Error("Failed while fetching vulnerability alerts from Github API", "repo", repo.GetFullName(), "error", err)
 					errs <- err
 					done = true
 					break
 				}
 				if alertsEnabled {
+					if l.parsedConfig.IncludedRepositories != nil {
+						if !slices.Contains(l.parsedConfig.IncludedRepositories, repo.GetFullName()) {
+							l.logger.Debug("Skipping repository due to not being explicitly included in config", "repo", repo.GetFullName())
+							continue
+						}
+					}
 					repositories <- repo
 					emittedRepos = append(emittedRepos, repo.GetFullName())
 				}
