@@ -67,6 +67,28 @@ func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.Config
 	return &proto.ConfigureResponse{}, nil
 }
 
+func (l *DependabotPlugin) Init(req *proto.InitRequest, apiHelper runner.ApiHelper) (*proto.InitResponse, error) {
+	ctx := context.Background()
+
+	subjectTemplates := []*proto.SubjectTemplate{
+		{
+			Name:                "dependabot-repository",
+			Type:                proto.SubjectType_SUBJECT_TYPE_COMPONENT,
+			TitleTemplate:       "Dependabot for repository: {{ .repository }}",
+			DescriptionTemplate: "Dependabot alerts for GitHub repository {{ .repository }} in organization {{ .organization }}",
+			PurposeTemplate:     "Represents Dependabot monitoring for a GitHub repository being evaluated for compliance",
+			IdentityLabelKeys:   []string{"repository", "organization"},
+			SelectorLabels:      []*proto.SubjectLabelSelector{},
+			LabelSchema: []*proto.SubjectLabelSchema{
+				{Key: "repository", Description: "The name of the GitHub repository"},
+				{Key: "organization", Description: "The GitHub organization owning the repository"},
+			},
+		},
+	}
+
+	return runner.InitWithSubjectsAndRisksFromPolicies(ctx, l.logger, req, apiHelper, subjectTemplates)
+}
+
 func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelper) (*proto.EvalResponse, error) {
 	ctx := context.TODO()
 	repochan, errchan := l.FetchRepositories(ctx)
@@ -413,7 +435,7 @@ func main() {
 	goplugin.Serve(&goplugin.ServeConfig{
 		HandshakeConfig: runner.HandshakeConfig,
 		Plugins: map[string]goplugin.Plugin{
-			"runner": &runner.RunnerGRPCPlugin{
+			"runner": &runner.RunnerV2GRPCPlugin{
 				Impl: dependabot,
 			},
 		},
