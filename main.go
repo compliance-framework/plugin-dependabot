@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -56,23 +57,37 @@ func (l *DependabotPlugin) ParseConfig() {
 	l.parsedConfig = &ParsedConfig{}
 	if l.config.IncludedRepositories != nil {
 		l.parsedConfig.IncludedRepositories = strings.Split(*l.config.IncludedRepositories, ",")
-		l.logger.Debug("successfully parsed config", "includedRepositories", l.parsedConfig.IncludedRepositories)
 	}
 	l.parsedConfig.Token = l.config.Token
 	l.parsedConfig.Organization = l.config.Organization
 	l.parsedConfig.User = l.config.User
 	l.parsedConfig.SecurityTeamName = l.config.SecurityTeamName
-	l.parsedConfig.OperationalMode = l.config.OperationalMode
-	if l.parsedConfig.OperationalMode == "" {
+	switch strings.ToLower(string(l.config.OperationalMode)) {
+	case strings.ToLower(string(OperationalModeGranular)):
+		l.parsedConfig.OperationalMode = OperationalModeGranular
+	case strings.ToLower(string(OperationalModeBundled)):
+		l.parsedConfig.OperationalMode = OperationalModeBundled
+	default:
+		l.logger.Debug("ParseConfig: operational-mode not set or unrecognised, defaulting to Bundled", "raw_value", l.config.OperationalMode)
 		l.parsedConfig.OperationalMode = OperationalModeBundled
 	}
+	l.logger.Debug("ParseConfig: resolved operational mode",
+		"raw_value", l.config.OperationalMode,
+		"resolved_value", l.parsedConfig.OperationalMode,
+		"included_repositories", l.parsedConfig.IncludedRepositories,
+	)
 }
 
 func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.ConfigureResponse, error) {
 	config := &PluginConfig{}
 	mapstructure.Decode(req.GetConfig(), config)
 	l.config = config
-	l.logger.Debug("successfully got config", "includedRepositories", l.config.IncludedRepositories)
+	l.logger.Debug("Configure: received raw config",
+		"operational_mode", l.config.OperationalMode,
+		"organization", l.config.Organization,
+		"included_repositories", l.config.IncludedRepositories,
+		"security_team_name", l.config.SecurityTeamName,
+	)
 
 	l.ParseConfig()
 	l.githubClient = github.NewClient(nil).WithAuthToken(l.parsedConfig.Token)
@@ -82,6 +97,7 @@ func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.Config
 
 func (l *DependabotPlugin) Init(req *proto.InitRequest, apiHelper runner.ApiHelper) (*proto.InitResponse, error) {
 	ctx := context.Background()
+	l.logger.Debug("Init: starting with operational mode", "operational_mode", l.parsedConfig.OperationalMode)
 
 	var subjectTemplates []*proto.SubjectTemplate
 	switch l.parsedConfig.OperationalMode {
@@ -129,6 +145,7 @@ func (l *DependabotPlugin) Init(req *proto.InitRequest, apiHelper runner.ApiHelp
 
 func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelper) (*proto.EvalResponse, error) {
 	ctx := context.Background()
+	l.logger.Debug("Eval: starting", "operational_mode", l.parsedConfig.OperationalMode, "policy_paths", req.GetPolicyPaths())
 	repochan, errchan := l.FetchRepositories(ctx)
 	l.logger.Debug("Fetching repositories from Github API")
 	var securityTeamMembers []*github.User
@@ -177,12 +194,20 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 				}, err
 			}
 
+			l.logger.Debug("Eval: dispatching repo",
+				"repo", repo.GetFullName(),
+				"operational_mode", l.parsedConfig.OperationalMode,
+				"operational_mode_bytes", fmt.Sprintf("%q", string(l.parsedConfig.OperationalMode)),
+				"is_granular", l.parsedConfig.OperationalMode == OperationalModeGranular,
+			)
 			switch l.parsedConfig.OperationalMode {
 			case OperationalModeGranular:
+				l.logger.Debug("Eval: using granular path", "repo", repo.GetFullName())
 				if err := l.evalForGranular(ctx, repo, alerts, req, apiHelper); err != nil {
 					return &proto.EvalResponse{Status: proto.ExecutionStatus_FAILURE}, err
 				}
 			default:
+				l.logger.Debug("Eval: using bundle path", "repo", repo.GetFullName())
 				if err := l.evalForBundle(ctx, repo, alerts, securityTeamMembers, req, apiHelper); err != nil {
 					return &proto.EvalResponse{Status: proto.ExecutionStatus_FAILURE}, err
 				}
@@ -200,21 +225,31 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 }
 
 func (l *DependabotPlugin) evalForGranular(ctx context.Context, repo *github.Repository, alerts []*github.DependabotAlert, req *proto.EvalRequest, apiHelper runner.ApiHelper) error {
-	for _, alert := range alerts {
+	l.logger.Debug("evalForGranular: starting", "repo", repo.GetFullName(), "alert_count", len(alerts), "policy_paths", req.GetPolicyPaths())
+	for i, alert := range alerts {
+		cveID := alert.GetSecurityAdvisory().GetCVEID()
+		if cveID == "" {
+			cveID = alert.GetSecurityAdvisory().GetGHSAID()
+		}
+		l.logger.Debug("evalForGranular: evaluating alert", "index", i, "cve_id", cveID, "state", alert.GetState())
 		alertEvidences, err := l.EvaluateGranularPolicies(ctx, repo, alert, req)
 		if err != nil {
-			l.logger.Error("Failed to evaluate granular policies", "repo", repo.GetFullName(), "error", err)
+			l.logger.Error("Failed to evaluate granular policies", "repo", repo.GetFullName(), "cve_id", cveID, "error", err)
 			return err
 		}
+		l.logger.Debug("evalForGranular: evidence produced", "cve_id", cveID, "count", len(alertEvidences))
 		if err = apiHelper.CreateEvidence(ctx, alertEvidences); err != nil {
-			l.logger.Error("Failed to send granular evidence", "repo", repo.GetFullName(), "error", err)
+			l.logger.Error("Failed to send granular evidence", "repo", repo.GetFullName(), "cve_id", cveID, "error", err)
 			return err
 		}
+		l.logger.Debug("evalForGranular: evidence sent", "cve_id", cveID)
 	}
+	l.logger.Debug("evalForGranular: done", "repo", repo.GetFullName())
 	return nil
 }
 
 func (l *DependabotPlugin) evalForBundle(ctx context.Context, repo *github.Repository, alerts []*github.DependabotAlert, securityTeamMembers []*github.User, req *proto.EvalRequest, apiHelper runner.ApiHelper) error {
+	l.logger.Debug("evalForBundle: starting", "repo", repo.GetFullName(), "alert_count", len(alerts), "policy_paths", req.GetPolicyPaths())
 	data := &DependabotData{
 		Alerts: alerts,
 	}
@@ -227,11 +262,13 @@ func (l *DependabotPlugin) evalForBundle(ctx context.Context, repo *github.Repos
 		l.logger.Error("Failed to evaluate policies", "repo", repo.GetFullName(), "error", err)
 		return err
 	}
+	l.logger.Debug("evalForBundle: evidence produced", "repo", repo.GetFullName(), "count", len(evidences))
 
 	if err = apiHelper.CreateEvidence(ctx, evidences); err != nil {
 		l.logger.Error("Failed to send evidence", "repo", repo.GetFullName(), "error", err)
 		return err
 	}
+	l.logger.Debug("evalForBundle: evidence sent", "repo", repo.GetFullName())
 	return nil
 }
 
@@ -438,6 +475,7 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 	}
 
 	for _, policyPath := range req.GetPolicyPaths() {
+		l.logger.Debug("EvaluatePolicies: running policy", "repo", repo.GetFullName(), "policy_path", policyPath)
 		// Explicitly reset steps to make things readable
 		processor := policyManager.NewPolicyProcessor(
 			l.logger,
@@ -453,7 +491,11 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 			actors,
 			activities,
 		)
+		if inputJSON, jsonErr := json.Marshal(data); jsonErr == nil {
+			l.logger.Debug("EvaluatePolicies: policy input", "policy_path", policyPath, "input", string(inputJSON))
+		}
 		evidence, err := processor.GenerateResults(ctx, policyPath, data)
+		l.logger.Debug("EvaluatePolicies: policy result", "policy_path", policyPath, "evidence_count", len(evidence), "error", err)
 		evidences = slices.Concat(evidences, evidence)
 		if err != nil {
 			accumulatedErrors = errors.Join(accumulatedErrors, err)
@@ -575,6 +617,7 @@ func (l *DependabotPlugin) EvaluateGranularPolicies(ctx context.Context, repo *g
 
 	evidences := make([]*proto.Evidence, 0)
 	for _, policyPath := range req.GetPolicyPaths() {
+		l.logger.Debug("EvaluateGranularPolicies: running policy", "cve_id", cveID, "repo", repo.GetFullName(), "policy_path", policyPath)
 		processor := policyManager.NewPolicyProcessor(
 			l.logger,
 			labels,
@@ -584,7 +627,11 @@ func (l *DependabotPlugin) EvaluateGranularPolicies(ctx context.Context, repo *g
 			actors,
 			activities,
 		)
+		if inputJSON, jsonErr := json.Marshal(alert); jsonErr == nil {
+			l.logger.Debug("EvaluateGranularPolicies: policy input", "cve_id", cveID, "policy_path", policyPath, "input", string(inputJSON))
+		}
 		evidence, err := processor.GenerateResults(ctx, policyPath, alert)
+		l.logger.Debug("EvaluateGranularPolicies: policy result", "cve_id", cveID, "policy_path", policyPath, "evidence_count", len(evidence), "error", err)
 		evidences = slices.Concat(evidences, evidence)
 		if err != nil {
 			accumulatedErrors = errors.Join(accumulatedErrors, err)
