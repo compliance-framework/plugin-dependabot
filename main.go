@@ -16,19 +16,28 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+type OperationalMode string
+
+const (
+	OperationalModeBundled  OperationalMode = "Bundled"  // default: one evidence per repo
+	OperationalModeGranular OperationalMode = "Granular" // one evidence per alert/CVE
+)
+
 type PluginConfig struct {
-	Token                string  `mapstructure:"token"`
-	Organization         *string `mapstructure:"organization"`
-	IncludedRepositories *string `mapstructure:"included-repositories"`
-	User                 *string `mapstructure:"user"`
-	SecurityTeamName     *string `mapstructure:"security-team-name"`
+	Token                string          `mapstructure:"token"`
+	Organization         *string         `mapstructure:"organization"`
+	IncludedRepositories *string         `mapstructure:"included-repositories"`
+	User                 *string         `mapstructure:"user"`
+	SecurityTeamName     *string         `mapstructure:"security-team-name"`
+	OperationalMode      OperationalMode `mapstructure:"operational-mode"`
 }
 type ParsedConfig struct {
-	Token                string   `mapstructure:"token"`
-	Organization         *string  `mapstructure:"organization"`
-	IncludedRepositories []string `mapstructure:"included-repositories"`
-	User                 *string  `mapstructure:"user"`
-	SecurityTeamName     *string  `mapstructure:"security-team-name"`
+	Token                string          `mapstructure:"token"`
+	Organization         *string         `mapstructure:"organization"`
+	IncludedRepositories []string        `mapstructure:"included-repositories"`
+	User                 *string         `mapstructure:"user"`
+	SecurityTeamName     *string         `mapstructure:"security-team-name"`
+	OperationalMode      OperationalMode `mapstructure:"operational-mode"`
 }
 type DependabotPlugin struct {
 	logger hclog.Logger
@@ -53,6 +62,10 @@ func (l *DependabotPlugin) ParseConfig() {
 	l.parsedConfig.Organization = l.config.Organization
 	l.parsedConfig.User = l.config.User
 	l.parsedConfig.SecurityTeamName = l.config.SecurityTeamName
+	l.parsedConfig.OperationalMode = l.config.OperationalMode
+	if l.parsedConfig.OperationalMode == "" {
+		l.parsedConfig.OperationalMode = OperationalModeBundled
+	}
 }
 
 func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.ConfigureResponse, error) {
@@ -70,27 +83,52 @@ func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.Config
 func (l *DependabotPlugin) Init(req *proto.InitRequest, apiHelper runner.ApiHelper) (*proto.InitResponse, error) {
 	ctx := context.Background()
 
-	subjectTemplates := []*proto.SubjectTemplate{
-		{
-			Name:                "dependabot-repository",
-			Type:                proto.SubjectType_SUBJECT_TYPE_COMPONENT,
-			TitleTemplate:       "Dependabot for repository: {{ .repository }}",
-			DescriptionTemplate: "Dependabot alerts for GitHub repository {{ .repository }} in organization {{ .organization }}",
-			PurposeTemplate:     "Represents Dependabot monitoring for a GitHub repository being evaluated for compliance",
-			IdentityLabelKeys:   []string{"repository", "organization"},
-			SelectorLabels:      []*proto.SubjectLabelSelector{},
-			LabelSchema: []*proto.SubjectLabelSchema{
-				{Key: "repository", Description: "The name of the GitHub repository"},
-				{Key: "organization", Description: "The GitHub organization owning the repository"},
+	var subjectTemplates []*proto.SubjectTemplate
+	switch l.parsedConfig.OperationalMode {
+	case OperationalModeGranular:
+		subjectTemplates = []*proto.SubjectTemplate{
+			{
+				Name:                "dependabot-alert",
+				Type:                proto.SubjectType_SUBJECT_TYPE_COMPONENT,
+				TitleTemplate:       "{{ .cve_id }} in {{ .repository }}",
+				DescriptionTemplate: "Dependabot alert for {{ .cve_id }} affecting {{ .package_name }} ({{ .ecosystem }}) in {{ .repository }}",
+				PurposeTemplate:     "Represents a specific CVE vulnerability alert detected by Dependabot in a GitHub repository",
+				IdentityLabelKeys:   []string{"repository", "organization", "cve_id"},
+				SelectorLabels:      []*proto.SubjectLabelSelector{},
+				LabelSchema: []*proto.SubjectLabelSchema{
+					{Key: "repository", Description: "The name of the GitHub repository"},
+					{Key: "organization", Description: "The GitHub organization owning the repository"},
+					{Key: "cve_id", Description: "The CVE or GHSA identifier for the vulnerability"},
+					{Key: "package_name", Description: "The name of the affected package"},
+					{Key: "ecosystem", Description: "The package ecosystem (go, npm, pip, etc.)"},
+					{Key: "severity", Description: "The vulnerability severity level (critical, high, medium, low)"},
+					{Key: "cvss_score", Description: "The CVSS numeric score of the vulnerability"},
+				},
 			},
-		},
+		}
+	default:
+		subjectTemplates = []*proto.SubjectTemplate{
+			{
+				Name:                "dependabot-repository",
+				Type:                proto.SubjectType_SUBJECT_TYPE_COMPONENT,
+				TitleTemplate:       "Dependabot for repository: {{ .repository }}",
+				DescriptionTemplate: "Dependabot alerts for GitHub repository {{ .repository }} in organization {{ .organization }}",
+				PurposeTemplate:     "Represents Dependabot monitoring for a GitHub repository being evaluated for compliance",
+				IdentityLabelKeys:   []string{"repository", "organization"},
+				SelectorLabels:      []*proto.SubjectLabelSelector{},
+				LabelSchema: []*proto.SubjectLabelSchema{
+					{Key: "repository", Description: "The name of the GitHub repository"},
+					{Key: "organization", Description: "The GitHub organization owning the repository"},
+				},
+			},
+		}
 	}
 
 	return runner.InitWithSubjectsAndRisksFromPolicies(ctx, l.logger, req, apiHelper, subjectTemplates)
 }
 
 func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelper) (*proto.EvalResponse, error) {
-	ctx := context.TODO()
+	ctx := context.Background()
 	repochan, errchan := l.FetchRepositories(ctx)
 	l.logger.Debug("Fetching repositories from Github API")
 	var securityTeamMembers []*github.User
@@ -139,26 +177,15 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 				}, err
 			}
 
-			data := &DependabotData{
-				Alerts: alerts,
-			}
-			if securityTeamMembers != nil {
-				data.SecurityTeamMembers = securityTeamMembers
-			}
-
-			evidences, err := l.EvaluatePolicies(ctx, repo, data, req)
-			if err != nil {
-				l.logger.Error("Failed to evaluate policies", "repo", repo.GetFullName(), "error", err)
-				return &proto.EvalResponse{
-					Status: proto.ExecutionStatus_FAILURE,
-				}, err
-			}
-
-			if err = apiHelper.CreateEvidence(ctx, evidences); err != nil {
-				l.logger.Error("Failed to send evidence", "repo", repo.GetFullName(), "error", err)
-				return &proto.EvalResponse{
-					Status: proto.ExecutionStatus_FAILURE,
-				}, err
+			switch l.parsedConfig.OperationalMode {
+			case OperationalModeGranular:
+				if err := l.evalForGranular(ctx, repo, alerts, req, apiHelper); err != nil {
+					return &proto.EvalResponse{Status: proto.ExecutionStatus_FAILURE}, err
+				}
+			default:
+				if err := l.evalForBundle(ctx, repo, alerts, securityTeamMembers, req, apiHelper); err != nil {
+					return &proto.EvalResponse{Status: proto.ExecutionStatus_FAILURE}, err
+				}
 			}
 		}
 	}
@@ -170,6 +197,42 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 	return &proto.EvalResponse{
 		Status: proto.ExecutionStatus_SUCCESS,
 	}, nil
+}
+
+func (l *DependabotPlugin) evalForGranular(ctx context.Context, repo *github.Repository, alerts []*github.DependabotAlert, req *proto.EvalRequest, apiHelper runner.ApiHelper) error {
+	for _, alert := range alerts {
+		alertEvidences, err := l.EvaluateGranularPolicies(ctx, repo, alert, req)
+		if err != nil {
+			l.logger.Error("Failed to evaluate granular policies", "repo", repo.GetFullName(), "error", err)
+			return err
+		}
+		if err = apiHelper.CreateEvidence(ctx, alertEvidences); err != nil {
+			l.logger.Error("Failed to send granular evidence", "repo", repo.GetFullName(), "error", err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (l *DependabotPlugin) evalForBundle(ctx context.Context, repo *github.Repository, alerts []*github.DependabotAlert, securityTeamMembers []*github.User, req *proto.EvalRequest, apiHelper runner.ApiHelper) error {
+	data := &DependabotData{
+		Alerts: alerts,
+	}
+	if securityTeamMembers != nil {
+		data.SecurityTeamMembers = securityTeamMembers
+	}
+
+	evidences, err := l.EvaluatePolicies(ctx, repo, data, req)
+	if err != nil {
+		l.logger.Error("Failed to evaluate policies", "repo", repo.GetFullName(), "error", err)
+		return err
+	}
+
+	if err = apiHelper.CreateEvidence(ctx, evidences); err != nil {
+		l.logger.Error("Failed to send evidence", "repo", repo.GetFullName(), "error", err)
+		return err
+	}
+	return nil
 }
 
 func (l *DependabotPlugin) FetchSecurityTeamMembers(ctx context.Context) ([]*github.User, error) {
@@ -398,6 +461,137 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 	}
 
 	l.logger.Info("collected evidence", "count", len(evidences))
+
+	return evidences, accumulatedErrors
+}
+
+func (l *DependabotPlugin) EvaluateGranularPolicies(ctx context.Context, repo *github.Repository, alert *github.DependabotAlert, req *proto.EvalRequest) ([]*proto.Evidence, error) {
+	var accumulatedErrors error
+
+	// Extract alert fields
+	cveID := alert.GetSecurityAdvisory().GetCVEID()
+	if cveID == "" {
+		cveID = alert.GetSecurityAdvisory().GetGHSAID()
+	}
+	packageName := alert.GetDependency().GetPackage().GetName()
+	ecosystem := alert.GetDependency().GetPackage().GetEcosystem()
+	severity := alert.GetSecurityVulnerability().GetSeverity()
+	var cvssScoreVal float64
+	if score := alert.GetSecurityAdvisory().GetCVSS().GetScore(); score != nil {
+		cvssScoreVal = *score
+	}
+	cvssScore := fmt.Sprintf("%.1f", cvssScoreVal)
+
+	// Map GitHub severity ("medium") → CCF standard ("moderate")
+	impact := severity
+	if severity == "medium" {
+		impact = "moderate"
+	}
+
+	labels := map[string]string{
+		"provider":     "github",
+		"type":         "dependabot",
+		"repository":   repo.GetName(),
+		"organization": repo.GetOwner().GetLogin(),
+		"cve_id":       cveID,
+		"package_name": packageName,
+		"ecosystem":    ecosystem,
+		"severity":     severity,
+		"impact":       impact,
+		"cvss_score":   cvssScore,
+	}
+
+	activities := []*proto.Activity{
+		{Title: "Collect Individual Dependabot Alert"},
+	}
+	actors := []*proto.OriginActor{
+		{
+			Title: "The Continuous Compliance Framework",
+			Type:  "assessment-platform",
+			Links: []*proto.Link{
+				{
+					Href: "https://compliance-framework.github.io/docs/",
+					Rel:  policyManager.Pointer("reference"),
+					Text: policyManager.Pointer("The Continuous Compliance Framework"),
+				},
+			},
+		},
+		{
+			Title: "Continuous Compliance Framework - Dependabot Plugin",
+			Type:  "tool",
+			Links: []*proto.Link{
+				{
+					Href: "https://github.com/compliance-framework/plugin-dependabot",
+					Rel:  policyManager.Pointer("reference"),
+					Text: policyManager.Pointer("The Continuous Compliance Framework Dependabot Plugin"),
+				},
+			},
+		},
+	}
+	components := []*proto.Component{
+		{
+			Identifier:  "common-components/github-repository",
+			Type:        "service",
+			Title:       "GitHub Repository",
+			Description: "A GitHub repository is a discrete codebase or project workspace hosted within a GitHub Organization or user account.",
+			Purpose:     "To serve as the authoritative and version-controlled location for a specific software project.",
+		},
+	}
+	inventory := []*proto.InventoryItem{
+		{
+			Identifier: fmt.Sprintf("github-repository/%s", repo.GetFullName()),
+			Type:       "github-repository",
+			Title:      fmt.Sprintf("Github Repository [%s]", repo.GetName()),
+			Props: []*proto.Property{
+				{Name: "name", Value: repo.GetName()},
+				{Name: "path", Value: repo.GetFullName()},
+				{Name: "organization", Value: repo.GetOwner().GetLogin()},
+			},
+			Links: []*proto.Link{
+				{
+					Href: repo.GetURL(),
+					Text: policyManager.Pointer("Repository URL"),
+				},
+			},
+			ImplementedComponents: []*proto.InventoryItemImplementedComponent{
+				{Identifier: "common-components/github-repository"},
+			},
+		},
+	}
+	subjects := []*proto.Subject{
+		{
+			Type:       proto.SubjectType_SUBJECT_TYPE_INVENTORY_ITEM,
+			Identifier: fmt.Sprintf("github-repository/%s", repo.GetFullName()),
+		},
+		{
+			Type:       proto.SubjectType_SUBJECT_TYPE_INVENTORY_ITEM,
+			Identifier: fmt.Sprintf("github-organization/%s", repo.GetOwner().GetLogin()),
+		},
+		{
+			Type:       proto.SubjectType_SUBJECT_TYPE_COMPONENT,
+			Identifier: "common-components/github-repository",
+		},
+	}
+
+	evidences := make([]*proto.Evidence, 0)
+	for _, policyPath := range req.GetPolicyPaths() {
+		processor := policyManager.NewPolicyProcessor(
+			l.logger,
+			labels,
+			subjects,
+			components,
+			inventory,
+			actors,
+			activities,
+		)
+		evidence, err := processor.GenerateResults(ctx, policyPath, alert)
+		evidences = slices.Concat(evidences, evidence)
+		if err != nil {
+			accumulatedErrors = errors.Join(accumulatedErrors, err)
+		}
+	}
+
+	l.logger.Info("collected granular evidence", "cve_id", cveID, "repo", repo.GetFullName(), "count", len(evidences))
 
 	return evidences, accumulatedErrors
 }
