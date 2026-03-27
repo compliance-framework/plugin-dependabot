@@ -3,7 +3,7 @@ module github.com/compliance-framework/plugin-dependabot
 go 1.25.8
 
 require (
-	github.com/compliance-framework/agent v0.3.1
+	github.com/compliance-framework/agent v0.3.2
 	github.com/google/go-github/v71 v71.0.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.7.0
@@ -68,5 +68,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
-
-replace github.com/compliance-framework/agent => ../agent
