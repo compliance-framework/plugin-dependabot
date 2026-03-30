@@ -316,7 +316,7 @@ func (l *DependabotPlugin) FetchRepositoryDependabotAlerts(ctx context.Context, 
 		ListCursorOptions: github.ListCursorOptions{},
 	})
 	if isPermissionError(err) {
-		return nil, fmt.Errorf("%w: %s: %w", errDependabotAlertsPermissionDenied, repo.GetFullName(), err)
+		return nil, fmt.Errorf("%w: %s: %v", errDependabotAlertsPermissionDenied, repo.GetFullName(), err)
 	}
 	l.logger.Debug("Fetched repository dependabot alerts from Github API", "repo", repo.GetFullName(), "count", len(alerts))
 	return alerts, err
