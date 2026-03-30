@@ -127,7 +127,10 @@ func (l *DependabotPlugin) ParseConfig() {
 
 func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.ConfigureResponse, error) {
 	config := &PluginConfig{}
-	mapstructure.Decode(req.GetConfig(), config)
+	if err := mapstructure.Decode(req.GetConfig(), config); err != nil {
+		l.logger.Error("Configure: failed to decode config", "error", err)
+		return nil, err
+	}
 	l.config = config
 	l.logger.Debug("Configure: received raw config",
 		"operational_mode", l.config.OperationalMode,
@@ -458,7 +461,7 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 				},
 				{
 					Name:  "organization",
-					Value: repo.GetOwner().GetName(),
+					Value: repo.GetOwner().GetLogin(),
 				},
 			},
 			Links: []*proto.Link{
