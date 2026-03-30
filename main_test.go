@@ -71,6 +71,28 @@ func (s *DependabotPluginSuite) newAlert() *github.DependabotAlert {
 	return &github.DependabotAlert{}
 }
 
+func (s *DependabotPluginSuite) newDetailedAlert(cveID, ghsaID, severity, packageName, ecosystem string, cvssScore *float64) *github.DependabotAlert {
+	return &github.DependabotAlert{
+		State: ptr("open"),
+		Dependency: &github.Dependency{
+			Package: &github.VulnerabilityPackage{
+				Name:      ptr(packageName),
+				Ecosystem: ptr(ecosystem),
+			},
+		},
+		SecurityAdvisory: &github.DependabotSecurityAdvisory{
+			CVEID:  ptr(cveID),
+			GHSAID: ptr(ghsaID),
+			CVSS: &github.AdvisoryCVSS{
+				Score: cvssScore,
+			},
+		},
+		SecurityVulnerability: &github.AdvisoryVulnerability{
+			Severity: ptr(severity),
+		},
+	}
+}
+
 // --- evalForGranular ---
 
 func (s *DependabotPluginSuite) TestEvalForGranular_NoAlerts() {
@@ -149,6 +171,40 @@ func (s *DependabotPluginSuite) TestEvalForBundle_CreateEvidenceError() {
 	require.ErrorIs(s.T(), err, wantErr)
 }
 
-func TestDependabotPlugin_FetchRepositories(t *testing.T) {
+func (s *DependabotPluginSuite) TestBuildGranularPolicyLabels_UsesGHSAFallbackAndMapsMediumToModerate() {
+	repo := s.newRepo()
+	policyContext := newGranularPolicyContext(repo)
+	score := 7.23
+	alert := s.newDetailedAlert("", "GHSA-123", "medium", "openssl", "gomod", &score)
 
+	labels := buildGranularPolicyLabels(policyContext.labelsBase, alert)
+
+	assert.Equal(s.T(), "GHSA-123", labels["cve_id"])
+	assert.Equal(s.T(), "moderate", labels["impact"])
+	assert.Equal(s.T(), "7.2", labels["cvss_score"])
+	assert.Equal(s.T(), "test-repo", labels["repository"])
+	assert.Equal(s.T(), "test-org", labels["organization"])
+}
+
+func (s *DependabotPluginSuite) TestBuildGranularPolicyLabels_UsesCVEDefaultsAndGitHubBranding() {
+	repo := s.newRepo()
+	policyContext := newGranularPolicyContext(repo)
+	alert := s.newDetailedAlert("CVE-2026-0001", "GHSA-ignored", "critical", "lodash", "npm", nil)
+
+	labels := buildGranularPolicyLabels(policyContext.labelsBase, alert)
+
+	assert.Equal(s.T(), "CVE-2026-0001", labels["cve_id"])
+	assert.Equal(s.T(), "critical", labels["impact"])
+	assert.Equal(s.T(), "0.0", labels["cvss_score"])
+	require.Len(s.T(), policyContext.inventory, 1)
+	assert.Equal(s.T(), "GitHub Repository [test-repo]", policyContext.inventory[0].GetTitle())
+}
+
+func (s *DependabotPluginSuite) TestGranularPolicyInput_WrapsAlertInSingleElementSlice() {
+	alert := s.newDetailedAlert("CVE-2026-0002", "GHSA-456", "high", "requests", "pip", nil)
+
+	input := granularPolicyInput(alert)
+
+	require.Len(s.T(), input, 1)
+	assert.Same(s.T(), alert, input[0])
 }

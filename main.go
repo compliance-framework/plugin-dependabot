@@ -53,6 +53,53 @@ type DependabotData struct {
 	SecurityTeamMembers []*github.User
 }
 
+var errDependabotAlertsPermissionDenied = errors.New("insufficient permissions to fetch dependabot alerts")
+
+var (
+	granularActivities = []*proto.Activity{
+		{Title: "Collect Individual Dependabot Alert"},
+	}
+	granularActors = []*proto.OriginActor{
+		{
+			Title: "The Continuous Compliance Framework",
+			Type:  "assessment-platform",
+			Links: []*proto.Link{
+				{
+					Href: "https://compliance-framework.github.io/docs/",
+					Rel:  policyManager.Pointer("reference"),
+					Text: policyManager.Pointer("The Continuous Compliance Framework"),
+				},
+			},
+		},
+		{
+			Title: "Continuous Compliance Framework - Dependabot Plugin",
+			Type:  "tool",
+			Links: []*proto.Link{
+				{
+					Href: "https://github.com/compliance-framework/plugin-dependabot",
+					Rel:  policyManager.Pointer("reference"),
+					Text: policyManager.Pointer("The Continuous Compliance Framework Dependabot Plugin"),
+				},
+			},
+		},
+	}
+	granularComponents = []*proto.Component{
+		{
+			Identifier:  "common-components/github-repository",
+			Type:        "service",
+			Title:       "GitHub Repository",
+			Description: "A GitHub repository is a discrete codebase or project workspace hosted within a GitHub Organization or user account.",
+			Purpose:     "To serve as the authoritative and version-controlled location for a specific software project.",
+		},
+	}
+)
+
+type granularPolicyContext struct {
+	labelsBase map[string]string
+	inventory  []*proto.InventoryItem
+	subjects   []*proto.Subject
+}
+
 func (l *DependabotPlugin) ParseConfig() {
 	l.parsedConfig = &ParsedConfig{}
 	if l.config.IncludedRepositories != nil {
@@ -158,7 +205,7 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 			l.logger.Debug("Fetching repository dependabot alerts from Github API", "repo", repo.GetFullName())
 			alerts, err := l.FetchRepositoryDependabotAlerts(ctx, repo)
 			if err != nil {
-				if isPermissionError(err) {
+				if errors.Is(err, errDependabotAlertsPermissionDenied) {
 					l.logger.Warn("Skipping repository due to insufficient permissions for alerts fetch", "repo", repo.GetFullName(), "error", err)
 					reposAlertsPermissionDenied = append(reposAlertsPermissionDenied, repo.GetFullName())
 					continue
@@ -201,25 +248,25 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 
 func (l *DependabotPlugin) evalForGranular(ctx context.Context, repo *github.Repository, alerts []*github.DependabotAlert, req *proto.EvalRequest, apiHelper runner.ApiHelper) error {
 	l.logger.Debug("evalForGranular: starting", "repo", repo.GetFullName(), "alert_count", len(alerts), "policy_paths", req.GetPolicyPaths())
+	policyContext := newGranularPolicyContext(repo)
+	totalEvidence := 0
 	for i, alert := range alerts {
-		cveID := alert.GetSecurityAdvisory().GetCVEID()
-		if cveID == "" {
-			cveID = alert.GetSecurityAdvisory().GetGHSAID()
-		}
+		cveID := granularAlertIdentifier(alert)
 		l.logger.Debug("evalForGranular: evaluating alert", "index", i, "cve_id", cveID, "state", alert.GetState())
-		alertEvidences, err := l.EvaluateGranularPolicies(ctx, repo, alert, req)
+		alertEvidences, err := l.EvaluateGranularPolicies(ctx, repo, alert, req, policyContext)
 		if err != nil {
 			l.logger.Error("Failed to evaluate granular policies", "repo", repo.GetFullName(), "cve_id", cveID, "error", err)
 			return err
 		}
 		l.logger.Debug("evalForGranular: evidence produced", "cve_id", cveID, "count", len(alertEvidences))
+		totalEvidence += len(alertEvidences)
 		if err = apiHelper.CreateEvidence(ctx, alertEvidences); err != nil {
 			l.logger.Error("Failed to send granular evidence", "repo", repo.GetFullName(), "cve_id", cveID, "error", err)
 			return err
 		}
 		l.logger.Debug("evalForGranular: evidence sent", "cve_id", cveID)
 	}
-	l.logger.Debug("evalForGranular: done", "repo", repo.GetFullName())
+	l.logger.Info("Granular evaluation summary", "repo", repo.GetFullName(), "alert_count", len(alerts), "evidence_count", totalEvidence)
 	return nil
 }
 
@@ -266,7 +313,7 @@ func (l *DependabotPlugin) FetchRepositoryDependabotAlerts(ctx context.Context, 
 		ListCursorOptions: github.ListCursorOptions{},
 	})
 	if isPermissionError(err) {
-		return nil, nil
+		return nil, fmt.Errorf("%w: %s: %w", errDependabotAlertsPermissionDenied, repo.GetFullName(), err)
 	}
 	l.logger.Debug("Fetched repository dependabot alerts from Github API", "repo", repo.GetFullName(), "count", len(alerts))
 	return alerts, err
@@ -399,7 +446,7 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 		{
 			Identifier: fmt.Sprintf("github-repository/%s", repo.GetFullName()),
 			Type:       "github-repository",
-			Title:      fmt.Sprintf("Github Repository [%s]", repo.GetName()),
+			Title:      fmt.Sprintf("GitHub Repository [%s]", repo.GetName()),
 			Props: []*proto.Property{
 				{
 					Name:  "name",
@@ -466,8 +513,12 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 			actors,
 			activities,
 		)
-		if inputJSON, jsonErr := json.Marshal(data); jsonErr == nil {
-			l.logger.Debug("EvaluatePolicies: policy input", "policy_path", policyPath, "input", string(inputJSON))
+		if l.logger.IsTrace() {
+			if inputJSON, jsonErr := json.Marshal(data); jsonErr == nil {
+				l.logger.Trace("EvaluatePolicies: policy input", "policy_path", policyPath, "input", string(inputJSON))
+			} else {
+				l.logger.Trace("EvaluatePolicies: failed to marshal policy input", "policy_path", policyPath, "error", jsonErr)
+			}
 		}
 		evidence, err := processor.GenerateResults(ctx, policyPath, data)
 		l.logger.Debug("EvaluatePolicies: policy result", "policy_path", policyPath, "evidence_count", len(evidence), "error", err)
@@ -482,113 +533,11 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 	return evidences, accumulatedErrors
 }
 
-func (l *DependabotPlugin) EvaluateGranularPolicies(ctx context.Context, repo *github.Repository, alert *github.DependabotAlert, req *proto.EvalRequest) ([]*proto.Evidence, error) {
+func (l *DependabotPlugin) EvaluateGranularPolicies(ctx context.Context, repo *github.Repository, alert *github.DependabotAlert, req *proto.EvalRequest, policyContext *granularPolicyContext) ([]*proto.Evidence, error) {
 	var accumulatedErrors error
 
-	// Extract alert fields
-	cveID := alert.GetSecurityAdvisory().GetCVEID()
-	if cveID == "" {
-		cveID = alert.GetSecurityAdvisory().GetGHSAID()
-	}
-	packageName := alert.GetDependency().GetPackage().GetName()
-	ecosystem := alert.GetDependency().GetPackage().GetEcosystem()
-	severity := alert.GetSecurityVulnerability().GetSeverity()
-	var cvssScoreVal float64
-	if score := alert.GetSecurityAdvisory().GetCVSS().GetScore(); score != nil {
-		cvssScoreVal = *score
-	}
-	cvssScore := fmt.Sprintf("%.1f", cvssScoreVal)
-
-	// Map GitHub severity ("medium") → CCF standard ("moderate")
-	impact := severity
-	if severity == "medium" {
-		impact = "moderate"
-	}
-
-	labels := map[string]string{
-		"provider":     "github",
-		"type":         "dependabot",
-		"repository":   repo.GetName(),
-		"organization": repo.GetOwner().GetLogin(),
-		"cve_id":       cveID,
-		"package_name": packageName,
-		"ecosystem":    ecosystem,
-		"severity":     severity,
-		"impact":       impact,
-		"cvss_score":   cvssScore,
-	}
-
-	activities := []*proto.Activity{
-		{Title: "Collect Individual Dependabot Alert"},
-	}
-	actors := []*proto.OriginActor{
-		{
-			Title: "The Continuous Compliance Framework",
-			Type:  "assessment-platform",
-			Links: []*proto.Link{
-				{
-					Href: "https://compliance-framework.github.io/docs/",
-					Rel:  policyManager.Pointer("reference"),
-					Text: policyManager.Pointer("The Continuous Compliance Framework"),
-				},
-			},
-		},
-		{
-			Title: "Continuous Compliance Framework - Dependabot Plugin",
-			Type:  "tool",
-			Links: []*proto.Link{
-				{
-					Href: "https://github.com/compliance-framework/plugin-dependabot",
-					Rel:  policyManager.Pointer("reference"),
-					Text: policyManager.Pointer("The Continuous Compliance Framework Dependabot Plugin"),
-				},
-			},
-		},
-	}
-	components := []*proto.Component{
-		{
-			Identifier:  "common-components/github-repository",
-			Type:        "service",
-			Title:       "GitHub Repository",
-			Description: "A GitHub repository is a discrete codebase or project workspace hosted within a GitHub Organization or user account.",
-			Purpose:     "To serve as the authoritative and version-controlled location for a specific software project.",
-		},
-	}
-	inventory := []*proto.InventoryItem{
-		{
-			Identifier: fmt.Sprintf("github-repository/%s", repo.GetFullName()),
-			Type:       "github-repository",
-			Title:      fmt.Sprintf("Github Repository [%s]", repo.GetName()),
-			Props: []*proto.Property{
-				{Name: "name", Value: repo.GetName()},
-				{Name: "path", Value: repo.GetFullName()},
-				{Name: "organization", Value: repo.GetOwner().GetLogin()},
-			},
-			Links: []*proto.Link{
-				{
-					Href: repo.GetURL(),
-					Text: policyManager.Pointer("Repository URL"),
-				},
-			},
-			ImplementedComponents: []*proto.InventoryItemImplementedComponent{
-				{Identifier: "common-components/github-repository"},
-			},
-		},
-	}
-	subjects := []*proto.Subject{
-		{
-			Type:       proto.SubjectType_SUBJECT_TYPE_INVENTORY_ITEM,
-			Identifier: fmt.Sprintf("github-repository/%s", repo.GetFullName()),
-		},
-		{
-			Type:       proto.SubjectType_SUBJECT_TYPE_INVENTORY_ITEM,
-			Identifier: fmt.Sprintf("github-organization/%s", repo.GetOwner().GetLogin()),
-		},
-		{
-			Type:       proto.SubjectType_SUBJECT_TYPE_COMPONENT,
-			Identifier: "common-components/github-repository",
-		},
-	}
+	labels := buildGranularPolicyLabels(policyContext.labelsBase, alert)
+	cveID := labels["cve_id"]
 
 	evidences := make([]*proto.Evidence, 0)
 	for _, policyPath := range req.GetPolicyPaths() {
@@ -596,16 +545,20 @@ func (l *DependabotPlugin) EvaluateGranularPolicies(ctx context.Context, repo *g
 		processor := policyManager.NewPolicyProcessor(
 			l.logger,
 			labels,
-			subjects,
-			components,
-			inventory,
-			actors,
-			activities,
+			policyContext.subjects,
+			granularComponents,
+			policyContext.inventory,
+			granularActors,
+			granularActivities,
 		)
-		if inputJSON, jsonErr := json.Marshal(alert); jsonErr == nil {
-			l.logger.Debug("EvaluateGranularPolicies: policy input", "cve_id", cveID, "policy_path", policyPath, "input", string(inputJSON))
+		if l.logger.IsTrace() {
+			if inputJSON, jsonErr := json.Marshal(alert); jsonErr == nil {
+				l.logger.Trace("EvaluateGranularPolicies: policy input", "cve_id", cveID, "policy_path", policyPath, "input", string(inputJSON))
+			} else {
+				l.logger.Trace("EvaluateGranularPolicies: failed to marshal policy input", "cve_id", cveID, "policy_path", policyPath, "error", jsonErr)
+			}
 		}
-		evidence, err := processor.GenerateResults(ctx, policyPath, alert)
+		evidence, err := processor.GenerateResults(ctx, policyPath, granularPolicyInput(alert))
 		l.logger.Debug("EvaluateGranularPolicies: policy result", "cve_id", cveID, "policy_path", policyPath, "evidence_count", len(evidence), "error", err)
 		evidences = slices.Concat(evidences, evidence)
 		if err != nil {
@@ -613,9 +566,93 @@ func (l *DependabotPlugin) EvaluateGranularPolicies(ctx context.Context, repo *g
 		}
 	}
 
-	l.logger.Info("collected granular evidence", "cve_id", cveID, "repo", repo.GetFullName(), "count", len(evidences))
+	l.logger.Debug("collected granular evidence", "cve_id", cveID, "repo", repo.GetFullName(), "count", len(evidences))
 
 	return evidences, accumulatedErrors
+}
+
+func newGranularPolicyContext(repo *github.Repository) *granularPolicyContext {
+	repositoryIdentifier := fmt.Sprintf("github-repository/%s", repo.GetFullName())
+	return &granularPolicyContext{
+		labelsBase: map[string]string{
+			"provider":     "github",
+			"type":         "dependabot",
+			"repository":   repo.GetName(),
+			"organization": repo.GetOwner().GetLogin(),
+		},
+		inventory: []*proto.InventoryItem{
+			{
+				Identifier: repositoryIdentifier,
+				Type:       "github-repository",
+				Title:      fmt.Sprintf("GitHub Repository [%s]", repo.GetName()),
+				Props: []*proto.Property{
+					{Name: "name", Value: repo.GetName()},
+					{Name: "path", Value: repo.GetFullName()},
+					{Name: "organization", Value: repo.GetOwner().GetLogin()},
+				},
+				Links: []*proto.Link{
+					{
+						Href: repo.GetURL(),
+						Text: policyManager.Pointer("Repository URL"),
+					},
+				},
+				ImplementedComponents: []*proto.InventoryItemImplementedComponent{
+					{Identifier: "common-components/github-repository"},
+				},
+			},
+		},
+		subjects: []*proto.Subject{
+			{
+				Type:       proto.SubjectType_SUBJECT_TYPE_INVENTORY_ITEM,
+				Identifier: repositoryIdentifier,
+			},
+			{
+				Type:       proto.SubjectType_SUBJECT_TYPE_INVENTORY_ITEM,
+				Identifier: fmt.Sprintf("github-organization/%s", repo.GetOwner().GetLogin()),
+			},
+			{
+				Type:       proto.SubjectType_SUBJECT_TYPE_COMPONENT,
+				Identifier: "common-components/github-repository",
+			},
+		},
+	}
+}
+
+func buildGranularPolicyLabels(baseLabels map[string]string, alert *github.DependabotAlert) map[string]string {
+	severity := alert.GetSecurityVulnerability().GetSeverity()
+	impact := severity
+	if severity == "medium" {
+		impact = "moderate"
+	}
+
+	var cvssScoreVal float64
+	if score := alert.GetSecurityAdvisory().GetCVSS().GetScore(); score != nil {
+		cvssScoreVal = *score
+	}
+
+	labels := make(map[string]string, len(baseLabels)+6)
+	for key, value := range baseLabels {
+		labels[key] = value
+	}
+	labels["cve_id"] = granularAlertIdentifier(alert)
+	labels["package_name"] = alert.GetDependency().GetPackage().GetName()
+	labels["ecosystem"] = alert.GetDependency().GetPackage().GetEcosystem()
+	labels["severity"] = severity
+	labels["impact"] = impact
+	labels["cvss_score"] = fmt.Sprintf("%.1f", cvssScoreVal)
+	return labels
+}
+
+func granularAlertIdentifier(alert *github.DependabotAlert) string {
+	cveID := alert.GetSecurityAdvisory().GetCVEID()
+	if cveID == "" {
+		cveID = alert.GetSecurityAdvisory().GetGHSAID()
+	}
+	return cveID
+}
+
+func granularPolicyInput(alert *github.DependabotAlert) []*github.DependabotAlert {
+	return []*github.DependabotAlert{alert}
 }
 
 // isPermissionError returns true if the error from the GitHub client indicates
