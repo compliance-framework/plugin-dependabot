@@ -209,3 +209,53 @@ func (s *DependabotPluginSuite) TestGranularPolicyInput_WrapsAlertInSingleElemen
 	require.Len(s.T(), input, 1)
 	assert.Same(s.T(), alert, input[0])
 }
+
+func (s *DependabotPluginSuite) TestAdvanceDependabotAlertsPage_UsesCursor() {
+	opts := &github.ListAlertsOptions{}
+
+	hasNext := advanceDependabotAlertsPage(opts, &github.Response{Cursor: "cursor-2"})
+
+	require.True(s.T(), hasNext)
+	assert.Equal(s.T(), "cursor-2", opts.ListCursorOptions.Cursor)
+	assert.Empty(s.T(), opts.ListCursorOptions.Page)
+	assert.Zero(s.T(), opts.ListOptions.Page)
+}
+
+func (s *DependabotPluginSuite) TestAdvanceDependabotAlertsPage_UsesNextPageToken() {
+	opts := &github.ListAlertsOptions{
+		ListCursorOptions: github.ListCursorOptions{
+			Cursor: "cursor-1",
+		},
+	}
+
+	hasNext := advanceDependabotAlertsPage(opts, &github.Response{NextPageToken: "page-token-2"})
+
+	require.True(s.T(), hasNext)
+	assert.Equal(s.T(), "page-token-2", opts.ListCursorOptions.Page)
+	assert.Empty(s.T(), opts.ListCursorOptions.Cursor)
+	assert.Zero(s.T(), opts.ListOptions.Page)
+}
+
+func (s *DependabotPluginSuite) TestAdvanceDependabotAlertsPage_UsesNextPageNumber() {
+	opts := &github.ListAlertsOptions{
+		ListCursorOptions: github.ListCursorOptions{
+			Cursor: "cursor-1",
+			Page:   "page-token-1",
+		},
+	}
+
+	hasNext := advanceDependabotAlertsPage(opts, &github.Response{NextPage: 2})
+
+	require.True(s.T(), hasNext)
+	assert.Equal(s.T(), 2, opts.ListOptions.Page)
+	assert.Empty(s.T(), opts.ListCursorOptions.Page)
+	assert.Empty(s.T(), opts.ListCursorOptions.Cursor)
+}
+
+func (s *DependabotPluginSuite) TestAdvanceDependabotAlertsPage_StopsWithoutPaginationMetadata() {
+	opts := &github.ListAlertsOptions{}
+
+	hasNext := advanceDependabotAlertsPage(opts, &github.Response{})
+
+	assert.False(s.T(), hasNext)
+}

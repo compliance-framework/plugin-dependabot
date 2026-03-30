@@ -317,17 +317,59 @@ func (l *DependabotPlugin) FetchSecurityTeamMembers(ctx context.Context) ([]*git
 }
 
 func (l *DependabotPlugin) FetchRepositoryDependabotAlerts(ctx context.Context, repo *github.Repository) ([]*github.DependabotAlert, error) {
-	alerts, _, err := l.githubClient.Dependabot.ListRepoAlerts(ctx, repo.GetOwner().GetLogin(), repo.GetName(), &github.ListAlertsOptions{
-		ListOptions: github.ListOptions{
+	opts := &github.ListAlertsOptions{
+		ListCursorOptions: github.ListCursorOptions{
 			PerPage: 100,
 		},
-		ListCursorOptions: github.ListCursorOptions{},
-	})
-	if isPermissionError(err) {
-		return nil, fmt.Errorf("%w: %s: %v", errDependabotAlertsPermissionDenied, repo.GetFullName(), err)
 	}
-	l.logger.Debug("Fetched repository dependabot alerts from Github API", "repo", repo.GetFullName(), "count", len(alerts))
-	return alerts, err
+
+	allAlerts := make([]*github.DependabotAlert, 0)
+	for {
+		alerts, resp, err := l.githubClient.Dependabot.ListRepoAlerts(ctx, repo.GetOwner().GetLogin(), repo.GetName(), opts)
+		if isPermissionError(err) {
+			return nil, fmt.Errorf("%w: %s: %v", errDependabotAlertsPermissionDenied, repo.GetFullName(), err)
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		allAlerts = append(allAlerts, alerts...)
+		if !advanceDependabotAlertsPage(opts, resp) {
+			break
+		}
+	}
+
+	l.logger.Debug("Fetched repository dependabot alerts from Github API", "repo", repo.GetFullName(), "count", len(allAlerts))
+	return allAlerts, nil
+}
+
+func advanceDependabotAlertsPage(opts *github.ListAlertsOptions, resp *github.Response) bool {
+	if resp == nil {
+		return false
+	}
+
+	if resp.Cursor != "" {
+		opts.ListCursorOptions.Cursor = resp.Cursor
+		opts.ListCursorOptions.Page = ""
+		opts.ListOptions.Page = 0
+		return true
+	}
+
+	if resp.NextPageToken != "" {
+		opts.ListCursorOptions.Page = resp.NextPageToken
+		opts.ListCursorOptions.Cursor = ""
+		opts.ListOptions.Page = 0
+		return true
+	}
+
+	if resp.NextPage != 0 {
+		opts.ListOptions.Page = resp.NextPage
+		opts.ListCursorOptions.Page = ""
+		opts.ListCursorOptions.Cursor = ""
+		return true
+	}
+
+	return false
 }
 
 func (l *DependabotPlugin) FetchRepositories(ctx context.Context) (<-chan *github.Repository, <-chan error) {
