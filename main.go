@@ -99,45 +99,20 @@ func (l *DependabotPlugin) Init(req *proto.InitRequest, apiHelper runner.ApiHelp
 	ctx := context.Background()
 	l.logger.Debug("Init: starting with operational mode", "operational_mode", l.parsedConfig.OperationalMode)
 
-	var subjectTemplates []*proto.SubjectTemplate
-	switch l.parsedConfig.OperationalMode {
-	case OperationalModeGranular:
-		subjectTemplates = []*proto.SubjectTemplate{
-			{
-				Name:                "dependabot-alert",
-				Type:                proto.SubjectType_SUBJECT_TYPE_COMPONENT,
-				TitleTemplate:       "{{ .cve_id }} in {{ .repository }}",
-				DescriptionTemplate: "Dependabot alert for {{ .cve_id }} affecting {{ .package_name }} ({{ .ecosystem }}) in {{ .repository }}",
-				PurposeTemplate:     "Represents a specific CVE vulnerability alert detected by Dependabot in a GitHub repository",
-				IdentityLabelKeys:   []string{"repository", "organization", "cve_id"},
-				SelectorLabels:      []*proto.SubjectLabelSelector{},
-				LabelSchema: []*proto.SubjectLabelSchema{
-					{Key: "repository", Description: "The name of the GitHub repository"},
-					{Key: "organization", Description: "The GitHub organization owning the repository"},
-					{Key: "cve_id", Description: "The CVE or GHSA identifier for the vulnerability"},
-					{Key: "package_name", Description: "The name of the affected package"},
-					{Key: "ecosystem", Description: "The package ecosystem (go, npm, pip, etc.)"},
-					{Key: "severity", Description: "The vulnerability severity level (critical, high, medium, low)"},
-					{Key: "cvss_score", Description: "The CVSS numeric score of the vulnerability"},
-				},
+	subjectTemplates := []*proto.SubjectTemplate{
+		{
+			Name:                "dependabot-repository",
+			Type:                proto.SubjectType_SUBJECT_TYPE_COMPONENT,
+			TitleTemplate:       "Dependabot for repository: {{ .repository }}",
+			DescriptionTemplate: "Dependabot alerts for GitHub repository {{ .repository }} in organization {{ .organization }}",
+			PurposeTemplate:     "Represents Dependabot monitoring for a GitHub repository being evaluated for compliance",
+			IdentityLabelKeys:   []string{"repository", "organization"},
+			SelectorLabels:      []*proto.SubjectLabelSelector{},
+			LabelSchema: []*proto.SubjectLabelSchema{
+				{Key: "repository", Description: "The name of the GitHub repository"},
+				{Key: "organization", Description: "The GitHub organization owning the repository"},
 			},
-		}
-	default:
-		subjectTemplates = []*proto.SubjectTemplate{
-			{
-				Name:                "dependabot-repository",
-				Type:                proto.SubjectType_SUBJECT_TYPE_COMPONENT,
-				TitleTemplate:       "Dependabot for repository: {{ .repository }}",
-				DescriptionTemplate: "Dependabot alerts for GitHub repository {{ .repository }} in organization {{ .organization }}",
-				PurposeTemplate:     "Represents Dependabot monitoring for a GitHub repository being evaluated for compliance",
-				IdentityLabelKeys:   []string{"repository", "organization"},
-				SelectorLabels:      []*proto.SubjectLabelSelector{},
-				LabelSchema: []*proto.SubjectLabelSchema{
-					{Key: "repository", Description: "The name of the GitHub repository"},
-					{Key: "organization", Description: "The GitHub organization owning the repository"},
-				},
-			},
-		}
+		},
 	}
 
 	return runner.InitWithSubjectsAndRisksFromPolicies(ctx, l.logger, req, apiHelper, subjectTemplates)
