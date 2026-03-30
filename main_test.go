@@ -105,38 +105,37 @@ func (s *DependabotPluginSuite) TestEvalForGranular_NoAlerts() {
 	assert.Equal(s.T(), 0, helper.createEvidenceCalls)
 }
 
-func (s *DependabotPluginSuite) TestEvalForGranular_CallsCreateEvidencePerAlert() {
+func (s *DependabotPluginSuite) TestEvalForGranular_NoPolicyPathsSkipsCreateEvidence() {
 	plugin := s.newPlugin(OperationalModeGranular)
 	helper := &mockApiHelper{}
 	alerts := []*github.DependabotAlert{s.newAlert(), s.newAlert(), s.newAlert()}
 
-	// no policy paths → EvaluateGranularPolicies returns empty evidence without invoking OPA
 	err := plugin.evalForGranular(context.Background(), s.newRepo(), alerts, &proto.EvalRequest{}, helper)
 
 	require.NoError(s.T(), err)
-	assert.Equal(s.T(), len(alerts), helper.createEvidenceCalls)
+	assert.Equal(s.T(), 0, helper.createEvidenceCalls)
 }
 
-func (s *DependabotPluginSuite) TestEvalForGranular_CreateEvidenceError() {
+func (s *DependabotPluginSuite) TestEvalForGranular_NoPolicyPathsDoNotSurfaceCreateEvidenceErrors() {
 	plugin := s.newPlugin(OperationalModeGranular)
 	wantErr := errors.New("api unavailable")
 	helper := &mockApiHelper{createEvidenceErr: wantErr}
 
 	err := plugin.evalForGranular(context.Background(), s.newRepo(), []*github.DependabotAlert{s.newAlert()}, &proto.EvalRequest{}, helper)
 
-	require.ErrorIs(s.T(), err, wantErr)
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), 0, helper.createEvidenceCalls)
 }
 
-func (s *DependabotPluginSuite) TestEvalForGranular_StopsOnFirstCreateEvidenceError() {
+func (s *DependabotPluginSuite) TestEvalForGranular_NoPolicyPathsSkipAllNoOpApiCalls() {
 	plugin := s.newPlugin(OperationalModeGranular)
-	wantErr := errors.New("fail")
-	helper := &mockApiHelper{createEvidenceErr: wantErr}
+	helper := &mockApiHelper{createEvidenceErr: errors.New("fail")}
 	alerts := []*github.DependabotAlert{s.newAlert(), s.newAlert(), s.newAlert()}
 
 	err := plugin.evalForGranular(context.Background(), s.newRepo(), alerts, &proto.EvalRequest{}, helper)
 
-	require.ErrorIs(s.T(), err, wantErr)
-	assert.Equal(s.T(), 1, helper.createEvidenceCalls, "loop should stop after first error")
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), 0, helper.createEvidenceCalls)
 }
 
 // --- evalForBundle ---

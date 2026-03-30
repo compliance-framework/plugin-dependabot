@@ -251,6 +251,10 @@ func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelp
 
 func (l *DependabotPlugin) evalForGranular(ctx context.Context, repo *github.Repository, alerts []*github.DependabotAlert, req *proto.EvalRequest, apiHelper runner.ApiHelper) error {
 	l.logger.Debug("evalForGranular: starting", "repo", repo.GetFullName(), "alert_count", len(alerts), "policy_paths", req.GetPolicyPaths())
+	if len(req.GetPolicyPaths()) == 0 {
+		l.logger.Debug("evalForGranular: skipping repo because no policy paths were configured", "repo", repo.GetFullName())
+		return nil
+	}
 	policyContext := newGranularPolicyContext(repo)
 	totalEvidence := 0
 	for i, alert := range alerts {
@@ -263,6 +267,10 @@ func (l *DependabotPlugin) evalForGranular(ctx context.Context, repo *github.Rep
 		}
 		l.logger.Debug("evalForGranular: evidence produced", "cve_id", cveID, "count", len(alertEvidences))
 		totalEvidence += len(alertEvidences)
+		if len(alertEvidences) == 0 {
+			l.logger.Debug("evalForGranular: skipping evidence submission because policy evaluation produced no evidence", "cve_id", cveID, "repo", repo.GetFullName())
+			continue
+		}
 		if err = apiHelper.CreateEvidence(ctx, alertEvidences); err != nil {
 			l.logger.Error("Failed to send granular evidence", "repo", repo.GetFullName(), "cve_id", cveID, "error", err)
 			return err
