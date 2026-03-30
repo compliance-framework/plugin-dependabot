@@ -562,14 +562,15 @@ func (l *DependabotPlugin) EvaluateGranularPolicies(ctx context.Context, repo *g
 			granularActors,
 			granularActivities,
 		)
+		policyInput := granularPolicyInput(alert)
 		if l.logger.IsTrace() {
-			if inputJSON, jsonErr := json.Marshal(alert); jsonErr == nil {
+			if inputJSON, jsonErr := json.Marshal(policyInput); jsonErr == nil {
 				l.logger.Trace("EvaluateGranularPolicies: policy input", "cve_id", cveID, "policy_path", policyPath, "input", string(inputJSON))
 			} else {
 				l.logger.Trace("EvaluateGranularPolicies: failed to marshal policy input", "cve_id", cveID, "policy_path", policyPath, "error", jsonErr)
 			}
 		}
-		evidence, err := processor.GenerateResults(ctx, policyPath, granularPolicyInput(alert))
+		evidence, err := processor.GenerateResults(ctx, policyPath, policyInput)
 		l.logger.Debug("EvaluateGranularPolicies: policy result", "cve_id", cveID, "policy_path", policyPath, "evidence_count", len(evidence), "error", err)
 		evidences = slices.Concat(evidences, evidence)
 		if err != nil {
