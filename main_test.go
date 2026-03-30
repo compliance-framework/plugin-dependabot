@@ -129,11 +129,13 @@ func (s *DependabotPluginSuite) TestEvalForGranular_CreateEvidenceError() {
 
 func (s *DependabotPluginSuite) TestEvalForGranular_StopsOnFirstCreateEvidenceError() {
 	plugin := s.newPlugin(OperationalModeGranular)
-	helper := &mockApiHelper{createEvidenceErr: errors.New("fail")}
+	wantErr := errors.New("fail")
+	helper := &mockApiHelper{createEvidenceErr: wantErr}
 	alerts := []*github.DependabotAlert{s.newAlert(), s.newAlert(), s.newAlert()}
 
-	_ = plugin.evalForGranular(context.Background(), s.newRepo(), alerts, &proto.EvalRequest{}, helper)
+	err := plugin.evalForGranular(context.Background(), s.newRepo(), alerts, &proto.EvalRequest{}, helper)
 
+	require.ErrorIs(s.T(), err, wantErr)
 	assert.Equal(s.T(), 1, helper.createEvidenceCalls, "loop should stop after first error")
 }
 
