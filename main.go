@@ -55,6 +55,8 @@ type DependabotData struct {
 
 var errDependabotAlertsPermissionDenied = errors.New("insufficient permissions to fetch dependabot alerts")
 
+var dependabotAlertStates = []string{"auto_dismissed", "dismissed", "fixed", "open"}
+
 var (
 	granularActivities = []*proto.Activity{
 		{Title: "Collect Individual Dependabot Alert"},
@@ -317,7 +319,9 @@ func (l *DependabotPlugin) FetchSecurityTeamMembers(ctx context.Context) ([]*git
 }
 
 func (l *DependabotPlugin) FetchRepositoryDependabotAlerts(ctx context.Context, repo *github.Repository) ([]*github.DependabotAlert, error) {
+	stateFilter := dependabotAlertStateFilter()
 	opts := &github.ListAlertsOptions{
+		State: &stateFilter,
 		ListCursorOptions: github.ListCursorOptions{
 			PerPage: 100,
 		},
@@ -339,8 +343,12 @@ func (l *DependabotPlugin) FetchRepositoryDependabotAlerts(ctx context.Context, 
 		}
 	}
 
-	l.logger.Debug("Fetched repository dependabot alerts from Github API", "repo", repo.GetFullName(), "count", len(allAlerts))
+	l.logger.Debug("Fetched repository dependabot alerts from Github API", "repo", repo.GetFullName(), "state", stateFilter, "count", len(allAlerts))
 	return allAlerts, nil
+}
+
+func dependabotAlertStateFilter() string {
+	return strings.Join(dependabotAlertStates, ",")
 }
 
 func advanceDependabotAlertsPage(opts *github.ListAlertsOptions, resp *github.Response) bool {

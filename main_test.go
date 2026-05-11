@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/compliance-framework/agent/runner/proto"
@@ -208,6 +211,40 @@ func (s *DependabotPluginSuite) TestGranularPolicyInput_WrapsAlertInSingleElemen
 
 	require.Len(s.T(), input, 1)
 	assert.Same(s.T(), alert, input[0])
+}
+
+func (s *DependabotPluginSuite) TestDependabotAlertStateFilter_IncludesLifecycleStates() {
+	assert.Equal(s.T(), "auto_dismissed,dismissed,fixed,open", dependabotAlertStateFilter())
+}
+
+func (s *DependabotPluginSuite) TestFetchRepositoryDependabotAlerts_UsesSingleCombinedStateFilter() {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		assert.Equal(s.T(), "/repos/test-org/test-repo/dependabot/alerts", r.URL.Path)
+		assert.Equal(s.T(), "auto_dismissed,dismissed,fixed,open", r.URL.Query().Get("state"))
+		assert.Equal(s.T(), "100", r.URL.Query().Get("per_page"))
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`[{"number":1,"state":"fixed"},{"number":2,"state":"dismissed"}]`))
+		require.NoError(s.T(), err)
+	}))
+	defer server.Close()
+
+	baseURL, err := url.Parse(server.URL + "/")
+	require.NoError(s.T(), err)
+
+	plugin := s.newPlugin(OperationalModeBundled)
+	plugin.githubClient = github.NewClient(server.Client())
+	plugin.githubClient.BaseURL = baseURL
+	plugin.githubClient.UploadURL = baseURL
+
+	alerts, err := plugin.FetchRepositoryDependabotAlerts(context.Background(), s.newRepo())
+
+	require.NoError(s.T(), err)
+	require.Len(s.T(), alerts, 2)
+	assert.Equal(s.T(), 1, requests)
+	assert.Equal(s.T(), "fixed", alerts[0].GetState())
+	assert.Equal(s.T(), "dismissed", alerts[1].GetState())
 }
 
 func (s *DependabotPluginSuite) TestAdvanceDependabotAlertsPage_UsesCursor() {
