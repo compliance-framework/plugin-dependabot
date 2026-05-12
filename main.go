@@ -50,7 +50,7 @@ type DependabotPlugin struct {
 
 type DependabotData struct {
 	Alerts              []*github.DependabotAlert `json:"alerts"`
-	SecurityTeamMembers []*github.User            `json:"security_team_members"`
+	SecurityTeamMembers []*github.User            `json:"security_team_members,omitempty"`
 }
 
 var errDependabotAlertsPermissionDenied = errors.New("insufficient permissions to fetch dependabot alerts")
