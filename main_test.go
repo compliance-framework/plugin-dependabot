@@ -62,6 +62,7 @@ func (s *DependabotPluginSuite) newRepo() *github.Repository {
 	return &github.Repository{
 		Name:     ptr("test-repo"),
 		FullName: ptr("test-org/test-repo"),
+		HTMLURL:  ptr("https://github.com/test-org/test-repo"),
 		Owner: &github.User{
 			Login: ptr("test-org"),
 			Name:  ptr("test-org"),
@@ -211,6 +212,53 @@ func (s *DependabotPluginSuite) TestGranularPolicyInput_WrapsAlertInSingleElemen
 
 	require.Len(s.T(), input, 1)
 	assert.Same(s.T(), alert, input[0])
+}
+
+func (s *DependabotPluginSuite) TestRepositorySecurityLink_UsesRepositorySecurityPage() {
+	link := repositorySecurityLink(s.newRepo())
+
+	require.NotNil(s.T(), link)
+	assert.Equal(s.T(), "https://github.com/test-org/test-repo/security", link.GetHref())
+	assert.Equal(s.T(), "reference", link.GetRel())
+	assert.Equal(s.T(), "Repository security page", link.GetText())
+}
+
+func (s *DependabotPluginSuite) TestDependabotAlertLink_UsesHTMLURL() {
+	alert := s.newDetailedAlert("CVE-2026-0002", "GHSA-456", "high", "requests", "pip", nil)
+	alert.HTMLURL = ptr("https://github.com/test-org/test-repo/security/dependabot/7")
+
+	link := dependabotAlertLink(s.newRepo(), alert)
+
+	require.NotNil(s.T(), link)
+	assert.Equal(s.T(), "https://github.com/test-org/test-repo/security/dependabot/7", link.GetHref())
+	assert.Equal(s.T(), "reference", link.GetRel())
+	assert.Equal(s.T(), "Dependabot alert", link.GetText())
+}
+
+func (s *DependabotPluginSuite) TestDependabotAlertLink_BuildsNumberFallback() {
+	alert := s.newDetailedAlert("CVE-2026-0002", "GHSA-456", "high", "requests", "pip", nil)
+	alert.Number = github.Ptr(42)
+
+	link := dependabotAlertLink(s.newRepo(), alert)
+
+	require.NotNil(s.T(), link)
+	assert.Equal(s.T(), "https://github.com/test-org/test-repo/security/dependabot/42", link.GetHref())
+}
+
+func (s *DependabotPluginSuite) TestAppendEvidenceLink_AddsLinkToEvidence() {
+	evidences := []*proto.Evidence{
+		{},
+		nil,
+		{},
+	}
+
+	appendEvidenceLink(evidences, repositorySecurityLink(s.newRepo()))
+
+	require.Len(s.T(), evidences[0].GetLinks(), 1)
+	assert.Equal(s.T(), "https://github.com/test-org/test-repo/security", evidences[0].GetLinks()[0].GetHref())
+	assert.Empty(s.T(), evidences[1].GetLinks())
+	require.Len(s.T(), evidences[2].GetLinks(), 1)
+	assert.Equal(s.T(), "https://github.com/test-org/test-repo/security", evidences[2].GetLinks()[0].GetHref())
 }
 
 func (s *DependabotPluginSuite) TestDependabotAlertStateFilter_IncludesLifecycleStates() {

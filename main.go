@@ -49,8 +49,8 @@ type DependabotPlugin struct {
 }
 
 type DependabotData struct {
-	Alerts              []*github.DependabotAlert
-	SecurityTeamMembers []*github.User
+	Alerts              []*github.DependabotAlert `json:"alerts"`
+	SecurityTeamMembers []*github.User            `json:"security_team_members"`
 }
 
 var errDependabotAlertsPermissionDenied = errors.New("insufficient permissions to fetch dependabot alerts")
@@ -589,6 +589,7 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 		}
 	}
 
+	appendEvidenceLink(evidences, repositorySecurityLink(repo))
 	l.logger.Info("collected evidence", "count", len(evidences))
 
 	return evidences, accumulatedErrors
@@ -628,9 +629,79 @@ func (l *DependabotPlugin) EvaluateGranularPolicies(ctx context.Context, repo *g
 		}
 	}
 
+	appendEvidenceLink(evidences, dependabotAlertLink(repo, alert))
 	l.logger.Debug("collected granular evidence", "cve_id", cveID, "repo", repo.GetFullName(), "count", len(evidences))
 
 	return evidences, accumulatedErrors
+}
+
+func appendEvidenceLink(evidences []*proto.Evidence, link *proto.Link) {
+	if link == nil || link.GetHref() == "" {
+		return
+	}
+	for _, evidence := range evidences {
+		if evidence == nil {
+			continue
+		}
+		evidence.Links = append(evidence.Links, &proto.Link{
+			Href: link.GetHref(),
+			Rel:  policyManager.Pointer(link.GetRel()),
+			Text: policyManager.Pointer(link.GetText()),
+		})
+	}
+}
+
+func repositorySecurityLink(repo *github.Repository) *proto.Link {
+	repositoryURL := repositoryWebURL(repo)
+	if repositoryURL == "" {
+		return nil
+	}
+	return &proto.Link{
+		Href: fmt.Sprintf("%s/security", repositoryURL),
+		Rel:  policyManager.Pointer("reference"),
+		Text: policyManager.Pointer("Repository security page"),
+	}
+}
+
+func dependabotAlertLink(repo *github.Repository, alert *github.DependabotAlert) *proto.Link {
+	if alert == nil {
+		return nil
+	}
+	if alert.GetHTMLURL() != "" {
+		return &proto.Link{
+			Href: alert.GetHTMLURL(),
+			Rel:  policyManager.Pointer("reference"),
+			Text: policyManager.Pointer("Dependabot alert"),
+		}
+	}
+	if alert.GetNumber() == 0 {
+		return nil
+	}
+	repositoryURL := repositoryWebURL(repo)
+	if repositoryURL == "" {
+		return nil
+	}
+	return &proto.Link{
+		Href: fmt.Sprintf("%s/security/dependabot/%d", repositoryURL, alert.GetNumber()),
+		Rel:  policyManager.Pointer("reference"),
+		Text: policyManager.Pointer("Dependabot alert"),
+	}
+}
+
+func repositoryWebURL(repo *github.Repository) string {
+	if repo == nil {
+		return ""
+	}
+	if repo.GetHTMLURL() != "" {
+		return strings.TrimRight(repo.GetHTMLURL(), "/")
+	}
+	if repo.GetFullName() != "" {
+		return fmt.Sprintf("https://github.com/%s", repo.GetFullName())
+	}
+	if repo.GetOwner().GetLogin() != "" && repo.GetName() != "" {
+		return fmt.Sprintf("https://github.com/%s/%s", repo.GetOwner().GetLogin(), repo.GetName())
+	}
+	return ""
 }
 
 func newGranularPolicyContext(repo *github.Repository) *granularPolicyContext {
