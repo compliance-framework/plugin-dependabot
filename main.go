@@ -50,10 +50,9 @@ type DependabotPlugin struct {
 
 type DependabotData struct {
 	Alerts []*github.DependabotAlert `json:"alerts"`
-	// omitempty is intentional: field absent means security team not configured,
-	// field present (even empty) means security team was requested but has no members.
-	// This allows policies to distinguish between these two cases.
-	SecurityTeamMembers []*github.User `json:"security_team_members,omitempty"`
+	// Pointer-to-slice allows distinguishing: nil (not configured/fetched) vs &[] (empty team) vs &[members] (has members).
+	// omitempty omits nil, but emits empty or non-empty slices.
+	SecurityTeamMembers *[]*github.User `json:"security_team_members,omitempty"`
 }
 
 var errDependabotAlertsPermissionDenied = errors.New("insufficient permissions to fetch dependabot alerts")
@@ -292,7 +291,7 @@ func (l *DependabotPlugin) evalForBundle(ctx context.Context, repo *github.Repos
 		Alerts: alerts,
 	}
 	if securityTeamMembers != nil {
-		data.SecurityTeamMembers = securityTeamMembers
+		data.SecurityTeamMembers = &securityTeamMembers
 	}
 
 	evidences, err := l.EvaluatePolicies(ctx, repo, data, req)
