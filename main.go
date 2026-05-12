@@ -49,8 +49,11 @@ type DependabotPlugin struct {
 }
 
 type DependabotData struct {
-	Alerts              []*github.DependabotAlert `json:"alerts"`
-	SecurityTeamMembers []*github.User            `json:"security_team_members,omitempty"`
+	Alerts []*github.DependabotAlert `json:"alerts"`
+	// omitempty is intentional: field absent means security team not configured,
+	// field present (even empty) means security team was requested but has no members.
+	// This allows policies to distinguish between these two cases.
+	SecurityTeamMembers []*github.User `json:"security_team_members,omitempty"`
 }
 
 var errDependabotAlertsPermissionDenied = errors.New("insufficient permissions to fetch dependabot alerts")
@@ -343,7 +346,7 @@ func (l *DependabotPlugin) FetchRepositoryDependabotAlerts(ctx context.Context, 
 		}
 	}
 
-	l.logger.Debug("Fetched repository dependabot alerts from Github API", "repo", repo.GetFullName(), "state", stateFilter, "count", len(allAlerts))
+	l.logger.Debug("Fetched repository dependabot alerts from GitHub API", "repo", repo.GetFullName(), "state", stateFilter, "count", len(allAlerts))
 	return allAlerts, nil
 }
 
