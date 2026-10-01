@@ -46,6 +46,7 @@ type DependabotPlugin struct {
 	config       *PluginConfig
 	parsedConfig *ParsedConfig
 	githubClient *github.Client
+	policyData   map[string]interface{}
 }
 
 type DependabotData struct {
@@ -136,6 +137,11 @@ func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.Config
 		return nil, err
 	}
 	l.config = config
+	if policyData := req.GetPolicyData(); policyData != nil {
+		l.policyData = policyData.AsMap()
+	} else {
+		l.policyData = nil
+	}
 	l.logger.Debug("Configure: received raw config",
 		"operational_mode", l.config.OperationalMode,
 		"organization", l.config.Organization,
@@ -575,6 +581,7 @@ func (l *DependabotPlugin) EvaluatePolicies(ctx context.Context, repo *github.Re
 			inventory,
 			actors,
 			activities,
+			l.policyData,
 		)
 		if l.logger.IsTrace() {
 			if inputJSON, jsonErr := json.Marshal(data); jsonErr == nil {
@@ -614,6 +621,7 @@ func (l *DependabotPlugin) EvaluateGranularPolicies(ctx context.Context, repo *g
 			policyContext.inventory,
 			granularActors,
 			granularActivities,
+			l.policyData,
 		)
 		policyInput := granularPolicyInput(alert)
 		if l.logger.IsTrace() {
