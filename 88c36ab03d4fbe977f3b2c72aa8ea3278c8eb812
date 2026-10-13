@@ -1,2 +1,5 @@
 lisa-selfreview:
 Pass 1 (strict): approve, no findings. Diff matches the reviewed pilot (plugin-github-repositories#26) except: push branches are [main] (default branch is main), manifest seeded at 0.7.0 (latest final release; v0.7.0 is an ancestor of main via merge commit b52f66d). All shared-workflow uses pinned to 6e7fc9c (v1.5.2); config top-level keys equal defaults.json at v1.5.2. actionlint v1.7.12 clean; go build/test pass; goreleaser check + snapshot produce the same 5 archive names as the v0.7.0 release (each README.md + plugin; the repo has no LICENSE).
+
+lisa-design:
+Seed 0.7.0: latest final release v0.7.0 (tag on 344d5c8, merged into main by b52f66d). The -test tags (v0.3.2-test, v0.3.3-test) are not semver final and are ignored. README Releases section names goreleaser/gooci but not tag pushes, so it is left unchanged (same call as the pilot).
