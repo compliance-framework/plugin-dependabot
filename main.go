@@ -58,6 +58,10 @@ type DependabotData struct {
 
 var errDependabotAlertsPermissionDenied = errors.New("insufficient permissions to fetch dependabot alerts")
 
+// errPluginNotConfigured is returned by Init and Eval when Configure has not
+// completed successfully, so the plugin has no parsed config or GitHub client.
+var errPluginNotConfigured = errors.New("plugin not configured")
+
 var dependabotAlertStates = []string{"auto_dismissed", "dismissed", "fixed", "open"}
 
 var (
@@ -157,6 +161,9 @@ func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.Config
 
 func (l *DependabotPlugin) Init(req *proto.InitRequest, apiHelper runner.ApiHelper) (*proto.InitResponse, error) {
 	ctx := context.Background()
+	if l.parsedConfig == nil {
+		return nil, errPluginNotConfigured
+	}
 	l.logger.Debug("Init: starting with operational mode", "operational_mode", l.parsedConfig.OperationalMode)
 
 	subjectTemplates := []*proto.SubjectTemplate{
@@ -180,6 +187,9 @@ func (l *DependabotPlugin) Init(req *proto.InitRequest, apiHelper runner.ApiHelp
 
 func (l *DependabotPlugin) Eval(req *proto.EvalRequest, apiHelper runner.ApiHelper) (*proto.EvalResponse, error) {
 	ctx := context.Background()
+	if l.parsedConfig == nil || l.githubClient == nil {
+		return &proto.EvalResponse{Status: proto.ExecutionStatus_FAILURE}, errPluginNotConfigured
+	}
 	l.logger.Debug("Eval: starting", "operational_mode", l.parsedConfig.OperationalMode, "policy_paths", req.GetPolicyPaths())
 	repochan, errchan := l.FetchRepositories(ctx)
 	l.logger.Debug("Fetching repositories from Github API")
