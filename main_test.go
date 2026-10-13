@@ -99,7 +99,7 @@ func (s *DependabotPluginSuite) newDetailedAlert(cveID, ghsaID, severity, packag
 	}
 }
 
-// --- evalForGranular ---
+// --- Init / Eval before Configure ---
 
 func (s *DependabotPluginSuite) TestInit_WithoutConfigureReturnsNotConfigured() {
 	plugin := &DependabotPlugin{logger: hclog.NewNullLogger()}
@@ -156,6 +156,8 @@ func (s *DependabotPluginSuite) TestEval_WithoutConfigureReturnsNotConfigured() 
 	assert.Equal(s.T(), proto.ExecutionStatus_FAILURE, resp.GetStatus())
 	assert.Zero(s.T(), helper.createEvidenceCalls)
 }
+
+// --- evalForGranular ---
 
 func (s *DependabotPluginSuite) TestEvalForGranular_NoAlerts() {
 	plugin := s.newPlugin(OperationalModeGranular)
