@@ -2,3 +2,6 @@ lisa-design:
 - Init returns (nil, errPluginNotConfigured) when parsedConfig is nil, matching plugin-k8s and plugin-cloud-custodian ("plugin not configured"), instead of defaulting a config: an unconfigured plugin has no organization to describe, and the agent always calls Configure first.
 - Eval guards parsedConfig AND githubClient (both are set together by Configure; a failed Configure decode leaves them unset) and returns FAILURE + errPluginNotConfigured. The Fetch*/eval*/EvaluatePolicies helpers are only reachable over gRPC through Eval, so they are not guarded individually (existing unit tests call them directly with a partial plugin).
 - Configure is unchanged; Init behaviour after Configure is unchanged (same dependabot-repository subject template).
+
+lisa-selfreview:
+- pass 1: [nit CORE-STYLE-001 17989b9743f6] main_test.go: new Init/Eval guard tests sit under the '--- evalForGranular ---' section header -> fix: move above it under their own header.
