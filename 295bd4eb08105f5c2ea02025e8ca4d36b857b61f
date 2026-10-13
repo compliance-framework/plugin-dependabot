@@ -1,0 +1,4 @@
+lisa-design:
+- No code change: the plugin already keeps ConfigureRequest.policy_data (as a map, nil when unset) and passes it to both NewPolicyProcessor calls, so the v0.7.0 policyData signature change needs nothing here.
+- Go directive stays 1.26.1: main already declares it, and it equals agent v0.9.1's own directive.
+- Pre-existing whole-repo golangci-lint findings (6, in main.go) are left untouched; shared CI lints new issues only and this PR adds none.
