@@ -20,6 +20,7 @@ import (
 type mockApiHelper struct {
 	createEvidenceErr   error
 	createEvidenceCalls int
+	subjectTemplates    []*proto.SubjectTemplate
 }
 
 func (m *mockApiHelper) CreateEvidence(_ context.Context, _ []*proto.Evidence) error {
@@ -31,7 +32,8 @@ func (m *mockApiHelper) UpsertRiskTemplates(_ context.Context, _ string, _ []*pr
 	return nil
 }
 
-func (m *mockApiHelper) UpsertSubjectTemplates(_ context.Context, _ []*proto.SubjectTemplate) error {
+func (m *mockApiHelper) UpsertSubjectTemplates(_ context.Context, templates []*proto.SubjectTemplate) error {
+	m.subjectTemplates = append(m.subjectTemplates, templates...)
 	return nil
 }
 
@@ -95,6 +97,64 @@ func (s *DependabotPluginSuite) newDetailedAlert(cveID, ghsaID, severity, packag
 			Severity: ptr(severity),
 		},
 	}
+}
+
+// --- Init / Eval before Configure ---
+
+func (s *DependabotPluginSuite) TestInit_WithoutConfigureReturnsNotConfigured() {
+	plugin := &DependabotPlugin{logger: hclog.NewNullLogger()}
+	helper := &mockApiHelper{}
+
+	var (
+		resp *proto.InitResponse
+		err  error
+	)
+	require.NotPanics(s.T(), func() {
+		resp, err = plugin.Init(&proto.InitRequest{}, helper)
+	})
+
+	require.ErrorIs(s.T(), err, errPluginNotConfigured)
+	assert.EqualError(s.T(), err, "plugin not configured")
+	assert.Nil(s.T(), resp)
+	assert.Empty(s.T(), helper.subjectTemplates)
+}
+
+func (s *DependabotPluginSuite) TestInit_AfterConfigureUpsertsRepositorySubjectTemplate() {
+	plugin := &DependabotPlugin{logger: hclog.NewNullLogger()}
+	helper := &mockApiHelper{}
+
+	_, err := plugin.Configure(&proto.ConfigureRequest{Config: map[string]string{
+		"token":        "test-token",
+		"organization": "test-org",
+	}})
+	require.NoError(s.T(), err)
+
+	resp, err := plugin.Init(&proto.InitRequest{}, helper)
+
+	require.NoError(s.T(), err)
+	assert.NotNil(s.T(), resp)
+	require.Len(s.T(), helper.subjectTemplates, 1)
+	template := helper.subjectTemplates[0]
+	assert.Equal(s.T(), "dependabot-repository", template.GetName())
+	assert.Equal(s.T(), proto.SubjectType_SUBJECT_TYPE_COMPONENT, template.GetType())
+	assert.Equal(s.T(), []string{"repository", "organization"}, template.GetIdentityLabelKeys())
+}
+
+func (s *DependabotPluginSuite) TestEval_WithoutConfigureReturnsNotConfigured() {
+	plugin := &DependabotPlugin{logger: hclog.NewNullLogger()}
+	helper := &mockApiHelper{}
+
+	var (
+		resp *proto.EvalResponse
+		err  error
+	)
+	require.NotPanics(s.T(), func() {
+		resp, err = plugin.Eval(&proto.EvalRequest{}, helper)
+	})
+
+	require.ErrorIs(s.T(), err, errPluginNotConfigured)
+	assert.Equal(s.T(), proto.ExecutionStatus_FAILURE, resp.GetStatus())
+	assert.Zero(s.T(), helper.createEvidenceCalls)
 }
 
 // --- evalForGranular ---
