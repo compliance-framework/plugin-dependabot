@@ -1,0 +1,5 @@
+lisa-design:
+- ci.yml is mock-plugin-1's caller copied verbatim (minus its trial header), pinned to workflows v1.5.1 (7b55019); deviations would drift from the org template.
+- .goreleaser.yaml archives.format -> formats: [tar.gz] only to clear the deprecation goreleaser check flags; snapshot archives (names, platforms, contents) compared identical before/after.
+- release.yml and build-and-upload.yml deliberately untouched (W3 replaces them).
+- Pre-existing whole-repo lint findings (6 in main.go: errorlint, ineffassign x2, staticcheck QF1008 x3) left as a follow-up; CI lints new issues only.
