@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1](https://github.com/compliance-framework/plugin-dependabot/compare/v0.8.0...v0.8.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **deps:** bump agent to v0.9.3, workflows to v1.7.0 ([#32](https://github.com/compliance-framework/plugin-dependabot/issues/32)) ([5812704](https://github.com/compliance-framework/plugin-dependabot/commit/5812704c3a1726cc1d2908d2d34406280ef09c31))
+* **deps:** update all non-major dependencies ([#30](https://github.com/compliance-framework/plugin-dependabot/issues/30)) ([4083ed0](https://github.com/compliance-framework/plugin-dependabot/commit/4083ed03f4696e652ceff8817ae8e2205e518ff8))
+
 ## [0.8.0](https://github.com/compliance-framework/plugin-dependabot/compare/v0.7.0...v0.8.0) (2026-10-14)
 
 
