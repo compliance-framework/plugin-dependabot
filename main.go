@@ -25,7 +25,7 @@ const (
 )
 
 type PluginConfig struct {
-	Token                string          `mapstructure:"token"`
+	AuthConfig           `mapstructure:",squash"`
 	Organization         *string         `mapstructure:"organization"`
 	IncludedRepositories *string         `mapstructure:"included-repositories"`
 	User                 *string         `mapstructure:"user"`
@@ -33,7 +33,7 @@ type PluginConfig struct {
 	OperationalMode      OperationalMode `mapstructure:"operational-mode"`
 }
 type ParsedConfig struct {
-	Token                string          `mapstructure:"token"`
+	Auth                 AuthConfig
 	Organization         *string         `mapstructure:"organization"`
 	IncludedRepositories []string        `mapstructure:"included-repositories"`
 	User                 *string         `mapstructure:"user"`
@@ -114,7 +114,7 @@ func (l *DependabotPlugin) ParseConfig() {
 	if l.config.IncludedRepositories != nil {
 		l.parsedConfig.IncludedRepositories = strings.Split(*l.config.IncludedRepositories, ",")
 	}
-	l.parsedConfig.Token = l.config.Token
+	l.parsedConfig.Auth = l.config.AuthConfig
 	l.parsedConfig.Organization = l.config.Organization
 	l.parsedConfig.User = l.config.User
 	l.parsedConfig.SecurityTeamName = l.config.SecurityTeamName
@@ -154,7 +154,18 @@ func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.Config
 	)
 
 	l.ParseConfig()
-	client, err := github.NewClient(github.WithAuthToken(l.parsedConfig.Token))
+	if err := l.parsedConfig.Auth.validateAuth(); err != nil {
+		return nil, err
+	}
+	httpClient, err := l.parsedConfig.Auth.httpClient(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create github http client: %w", err)
+	}
+	var opts []github.ClientOptionsFunc
+	if httpClient != nil {
+		opts = append(opts, github.WithHTTPClient(httpClient))
+	}
+	client, err := github.NewClient(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create github client: %w", err)
 	}
