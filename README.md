@@ -38,17 +38,22 @@ installation tokens, which it renews as they expire.
 plugins:
   dependabot:
     config:
-      app-id: "123456"
-      installation-id: "78901234"
+      app_id: "123456"
+      installation_id: "78901234"
       # The PEM file the app's "Generate a private key" downloads (preferred), or
-      private-key-file: /etc/ccf/github-app.pem
+      private_key_file: /etc/ccf/github-app.pem
       # the key inline, as PEM or base64-encoded PEM (e.g. from an environment variable)
-      # private-key: "LS0tLS1CRUdJTi..."
+      # private_key: "LS0tLS1CRUdJTi..."
       organization: octocat
 ```
 
 A `token`, when set, takes precedence over the app settings. With neither, the plugin calls
 GitHub unauthenticated.
+
+The app keys use underscores (unlike `included-repositories` and the other existing keys), so
+the agent can fill them from environment variables such as
+`CCF_PLUGINS_DEPENDABOT_CONFIG_PRIVATE_KEY`, when the agent's config file declares the key
+(for example `private_key: ""`).
 
 ## Integration testing
 

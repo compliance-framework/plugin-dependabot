@@ -37,8 +37,8 @@ func TestAuthConfigValidate(t *testing.T) {
 		{name: "app with key file", cfg: AuthConfig{AppID: "1", InstallationID: "2", PrivateKeyFile: "/key.pem"}},
 		{name: "app with inline key", cfg: AuthConfig{AppID: "1", InstallationID: "2", PrivateKey: "abc"}},
 		{name: "nothing (unauthenticated, as before)", cfg: AuthConfig{}},
-		{name: "app without installation", cfg: AuthConfig{AppID: "1", PrivateKey: "abc"}, wantErr: "needs installation-id"},
-		{name: "app without key", cfg: AuthConfig{AppID: "1", InstallationID: "2"}, wantErr: "needs private-key-file or private-key"},
+		{name: "app without installation", cfg: AuthConfig{AppID: "1", PrivateKey: "abc"}, wantErr: "needs installation_id"},
+		{name: "app without key", cfg: AuthConfig{AppID: "1", InstallationID: "2"}, wantErr: "needs private_key_file or private_key"},
 		{name: "two keys", cfg: AuthConfig{AppID: "1", InstallationID: "2", PrivateKeyFile: "/key.pem", PrivateKey: "abc"}, wantErr: "only one of"},
 	}
 	for _, tt := range tests {
@@ -99,7 +99,7 @@ func TestAuthConfigHTTPClient(t *testing.T) {
 	}
 
 	for name, cfg := range map[string]AuthConfig{
-		"non-numeric app-id":   {AppID: "abc", InstallationID: "2", PrivateKey: string(pemKey)},
+		"non-numeric app_id":   {AppID: "abc", InstallationID: "2", PrivateKey: string(pemKey)},
 		"missing key file":     {AppID: "1", InstallationID: "2", PrivateKeyFile: filepath.Join(t.TempDir(), "nope.pem")},
 		"key is not base64":    {AppID: "1", InstallationID: "2", PrivateKey: "not base64!"},
 		"key is not a PEM key": {AppID: "1", InstallationID: "2", PrivateKey: base64.StdEncoding.EncodeToString([]byte("nope"))},
@@ -116,7 +116,7 @@ func TestAuthConfigHTTPClient(t *testing.T) {
 func TestPluginConfigDecodesAuthKeys(t *testing.T) {
 	var cfg PluginConfig
 	err := mapstructure.Decode(map[string]string{
-		"app-id": "1", "installation-id": "2", "private-key-file": "/key.pem", "organization": "octocat",
+		"app_id": "1", "installation_id": "2", "private_key_file": "/key.pem", "organization": "octocat",
 	}, &cfg)
 	if err != nil {
 		t.Fatal(err)

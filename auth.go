@@ -21,12 +21,12 @@ type AuthConfig struct {
 
 	// GitHub App authentication. The plugin exchanges the app's private key for short-lived
 	// installation tokens, renewed as they expire.
-	AppID          string `mapstructure:"app-id"`
-	InstallationID string `mapstructure:"installation-id"`
+	AppID          string `mapstructure:"app_id"`
+	InstallationID string `mapstructure:"installation_id"`
 	// The PEM private key, from a file (preferred: keeps the key out of the config) or inline,
 	// base64-encoded or as plain PEM.
-	PrivateKeyFile string `mapstructure:"private-key-file"`
-	PrivateKey     string `mapstructure:"private-key"`
+	PrivateKeyFile string `mapstructure:"private_key_file"`
+	PrivateKey     string `mapstructure:"private_key"`
 }
 
 // validateAuth rejects incomplete GitHub App credentials. With neither a token nor app
@@ -37,19 +37,19 @@ func (c *AuthConfig) validateAuth() error {
 	}
 	var missing []string
 	if c.AppID == "" {
-		missing = append(missing, "app-id")
+		missing = append(missing, "app_id")
 	}
 	if c.InstallationID == "" {
-		missing = append(missing, "installation-id")
+		missing = append(missing, "installation_id")
 	}
 	if c.PrivateKeyFile == "" && c.PrivateKey == "" {
-		missing = append(missing, "private-key-file or private-key")
+		missing = append(missing, "private_key_file or private_key")
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("GitHub App authentication needs %s", strings.Join(missing, ", "))
 	}
 	if c.PrivateKeyFile != "" && c.PrivateKey != "" {
-		return errors.New("only one of private-key-file or private-key may be set")
+		return errors.New("only one of private_key_file or private_key may be set")
 	}
 	return nil
 }
@@ -70,11 +70,11 @@ func (c *AuthConfig) httpClient(ctx context.Context) (*http.Client, error) {
 
 	appID, err := strconv.ParseInt(c.AppID, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("parsing app-id: %w", err)
+		return nil, fmt.Errorf("parsing app_id: %w", err)
 	}
 	installationID, err := strconv.ParseInt(c.InstallationID, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("parsing installation-id: %w", err)
+		return nil, fmt.Errorf("parsing installation_id: %w", err)
 	}
 	key, err := c.privateKey()
 	if err != nil {
@@ -91,7 +91,7 @@ func (c *AuthConfig) privateKey() ([]byte, error) {
 	if c.PrivateKeyFile != "" {
 		key, err := os.ReadFile(c.PrivateKeyFile)
 		if err != nil {
-			return nil, fmt.Errorf("reading private-key-file: %w", err)
+			return nil, fmt.Errorf("reading private_key_file: %w", err)
 		}
 		return key, nil
 	}
@@ -101,7 +101,7 @@ func (c *AuthConfig) privateKey() ([]byte, error) {
 	}
 	decoded, err := base64.StdEncoding.DecodeString(key)
 	if err != nil {
-		return nil, fmt.Errorf("decoding private-key (expected PEM or base64-encoded PEM): %w", err)
+		return nil, fmt.Errorf("decoding private_key (expected PEM or base64-encoded PEM): %w", err)
 	}
 	return decoded, nil
 }
