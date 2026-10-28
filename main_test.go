@@ -5,11 +5,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 
 	"github.com/compliance-framework/agent/runner/proto"
-	"github.com/google/go-github/v71/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/hashicorp/go-hclog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -338,13 +337,15 @@ func (s *DependabotPluginSuite) TestFetchRepositoryDependabotAlerts_UsesSingleCo
 	}))
 	defer server.Close()
 
-	baseURL, err := url.Parse(server.URL + "/")
-	require.NoError(s.T(), err)
+	baseURL := server.URL + "/"
 
 	plugin := s.newPlugin(OperationalModeBundled)
-	plugin.githubClient = github.NewClient(server.Client())
-	plugin.githubClient.BaseURL = baseURL
-	plugin.githubClient.UploadURL = baseURL
+	var err error
+	plugin.githubClient, err = github.NewClient(
+		github.WithHTTPClient(server.Client()),
+		github.WithURLs(&baseURL, &baseURL),
+	)
+	require.NoError(s.T(), err)
 
 	alerts, err := plugin.FetchRepositoryDependabotAlerts(context.Background(), s.newRepo())
 

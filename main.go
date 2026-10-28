@@ -11,7 +11,7 @@ import (
 	policyManager "github.com/compliance-framework/agent/policy-manager"
 	"github.com/compliance-framework/agent/runner"
 	"github.com/compliance-framework/agent/runner/proto"
-	"github.com/google/go-github/v71/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/mitchellh/mapstructure"
@@ -154,7 +154,11 @@ func (l *DependabotPlugin) Configure(req *proto.ConfigureRequest) (*proto.Config
 	)
 
 	l.ParseConfig()
-	l.githubClient = github.NewClient(nil).WithAuthToken(l.parsedConfig.Token)
+	client, err := github.NewClient(github.WithAuthToken(l.parsedConfig.Token))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create github client: %w", err)
+	}
+	l.githubClient = client
 
 	return &proto.ConfigureResponse{}, nil
 }
@@ -778,10 +782,7 @@ func buildGranularPolicyLabels(baseLabels map[string]string, alert *github.Depen
 		impact = "moderate"
 	}
 
-	var cvssScoreVal float64
-	if score := alert.GetSecurityAdvisory().GetCVSS().GetScore(); score != nil {
-		cvssScoreVal = *score
-	}
+	cvssScoreVal := alert.GetSecurityAdvisory().GetCVSS().GetScore()
 
 	labels := make(map[string]string, len(baseLabels)+6)
 	for key, value := range baseLabels {

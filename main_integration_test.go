@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	policy_manager "github.com/compliance-framework/agent/policy-manager"
-	"github.com/google/go-github/v71/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/hashicorp/go-hclog"
 )
 
@@ -21,7 +21,7 @@ func TestDependabotPlugin_Integration_FetchRepositories(t *testing.T) {
 			Token:        os.Getenv("GITHUB_TOKEN"),
 			Organization: policy_manager.Pointer("compliance-framework"),
 		},
-		githubClient: github.NewClient(nil).WithAuthToken(os.Getenv("GITHUB_TOKEN")),
+		githubClient: newTestGithubClient(t),
 	}
 
 	repochan, errchan := plugin.FetchRepositories(ctx)
@@ -61,7 +61,7 @@ func TestDependabotPlugin_Integration_FetchRepositoryDependabotAlerts(t *testing
 			Token:        os.Getenv("GITHUB_TOKEN"),
 			Organization: policy_manager.Pointer("compliance-framework"),
 		},
-		githubClient: github.NewClient(nil).WithAuthToken(os.Getenv("GITHUB_TOKEN")),
+		githubClient: newTestGithubClient(t),
 	}
 
 	repo, _, err := plugin.githubClient.Repositories.Get(ctx, "compliance-framework", "configuration-service")
@@ -87,7 +87,7 @@ func TestDependabotPlugin_Integration_FetchTeamMembers(t *testing.T) {
 			Organization:     policy_manager.Pointer("compliance-framework"),
 			SecurityTeamName: policy_manager.Pointer("security"),
 		},
-		githubClient: github.NewClient(nil).WithAuthToken(os.Getenv("GITHUB_TOKEN")),
+		githubClient: newTestGithubClient(t),
 	}
 
 	members, err := plugin.FetchSecurityTeamMembers(ctx)
@@ -95,4 +95,13 @@ func TestDependabotPlugin_Integration_FetchTeamMembers(t *testing.T) {
 		t.Error(err)
 	}
 	t.Log("Successfully collected security team members", members)
+}
+
+func newTestGithubClient(t *testing.T) *github.Client {
+	t.Helper()
+	client, err := github.NewClient(github.WithAuthToken(os.Getenv("GITHUB_TOKEN")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return client
 }
