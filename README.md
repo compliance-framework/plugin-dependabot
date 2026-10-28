@@ -6,10 +6,54 @@ This plugin is intended to be run as part of an aggregate agent, and will execut
 
 ## Authentication
 
-To authenticate this plugin, you must provide a token which has at minimum the following permissions:
+The plugin authenticates with a token (a fine-grained personal access token, for example) or as a
+GitHub App installation. Either needs at minimum the following permissions:
 
 * Dependabot Alerts (read-only) - Used for reading alerts
 * Administration (read-only) - Used to check whether a repository has alerts enabled
+
+With a token:
+
+```yaml
+plugins:
+  dependabot:
+    config:
+      token: "github_pat_..."
+      organization: octocat
+```
+
+### GitHub App authentication
+
+Instead of a token, the plugin can authenticate as a GitHub App installed on the organization.
+Organizations can govern apps centrally, and the plugin only ever holds short-lived
+installation tokens, which it renews as they expire.
+
+1. Create a GitHub App (organization *Settings → Developer settings → GitHub Apps*) with the
+   read-only repository permissions above, and generate a private key for it.
+2. Install the app on the organization, for all repositories or the ones the plugin checks.
+3. Configure the plugin with the app's ID, the installation's ID (the number at the end of the
+   installation's settings URL) and the private key:
+
+```yaml
+plugins:
+  dependabot:
+    config:
+      app_id: "123456"
+      installation_id: "78901234"
+      # The PEM file the app's "Generate a private key" downloads (preferred), or
+      private_key_file: /etc/ccf/github-app.pem
+      # the key inline, as PEM or base64-encoded PEM (e.g. from an environment variable)
+      # private_key: "LS0tLS1CRUdJTi..."
+      organization: octocat
+```
+
+A `token`, when set, takes precedence over the app settings. With neither, the plugin calls
+GitHub unauthenticated.
+
+The app keys use underscores (unlike `included-repositories` and the other existing keys), so
+the agent can fill them from environment variables such as
+`CCF_PLUGINS_DEPENDABOT_CONFIG_PRIVATE_KEY`, when the agent's config file declares the key
+(for example `private_key: ""`).
 
 ## Integration testing
 

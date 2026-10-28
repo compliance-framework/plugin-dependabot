@@ -18,7 +18,7 @@ func TestDependabotPlugin_Integration_FetchRepositories(t *testing.T) {
 	plugin := DependabotPlugin{
 		logger: hclog.NewNullLogger(),
 		config: &PluginConfig{
-			Token:        os.Getenv("GITHUB_TOKEN"),
+			AuthConfig:   AuthConfig{Token: os.Getenv("GITHUB_TOKEN")},
 			Organization: policy_manager.Pointer("compliance-framework"),
 		},
 		githubClient: newTestGithubClient(t),
@@ -58,7 +58,7 @@ func TestDependabotPlugin_Integration_FetchRepositoryDependabotAlerts(t *testing
 			JSONFormat: true,
 		}),
 		config: &PluginConfig{
-			Token:        os.Getenv("GITHUB_TOKEN"),
+			AuthConfig:   AuthConfig{Token: os.Getenv("GITHUB_TOKEN")},
 			Organization: policy_manager.Pointer("compliance-framework"),
 		},
 		githubClient: newTestGithubClient(t),
@@ -83,7 +83,7 @@ func TestDependabotPlugin_Integration_FetchTeamMembers(t *testing.T) {
 	plugin := DependabotPlugin{
 		logger: hclog.NewNullLogger(),
 		config: &PluginConfig{
-			Token:            os.Getenv("GITHUB_TOKEN"),
+			AuthConfig:       AuthConfig{Token: os.Getenv("GITHUB_TOKEN")},
 			Organization:     policy_manager.Pointer("compliance-framework"),
 			SecurityTeamName: policy_manager.Pointer("security"),
 		},
