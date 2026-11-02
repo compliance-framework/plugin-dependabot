@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.0](https://github.com/compliance-framework/plugin-dependabot/compare/v0.9.0...v0.10.0) (2026-11-02)
+
+
+### Features
+
+* GitHub App authentication ([#35](https://github.com/compliance-framework/plugin-dependabot/issues/35)) ([6ec409e](https://github.com/compliance-framework/plugin-dependabot/commit/6ec409e1d68908ad94beaefeb024e923853292d9))
+
+
+### Bug Fixes
+
+* **deps:** build with the go1.26.10 toolchain so Renovate can ship Go security fixes ([#37](https://github.com/compliance-framework/plugin-dependabot/issues/37)) ([17e0393](https://github.com/compliance-framework/plugin-dependabot/commit/17e0393e9dcf804fc20cae164dfe0211e70c0669))
+* **deps:** bump agent to v0.9.6 ([#40](https://github.com/compliance-framework/plugin-dependabot/issues/40)) ([439e124](https://github.com/compliance-framework/plugin-dependabot/commit/439e124df04429676f826043d084a44b0769951e))
+
 ## [0.9.0](https://github.com/compliance-framework/plugin-dependabot/compare/v0.8.0...v0.9.0) (2026-10-28)
 
 
