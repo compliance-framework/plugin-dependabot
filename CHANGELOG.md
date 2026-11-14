@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.10.1](https://github.com/compliance-framework/plugin-dependabot/compare/v0.10.0...v0.10.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** update go toolchain directive to v1.27.4 [security] ([#41](https://github.com/compliance-framework/plugin-dependabot/issues/41)) ([ca7ef9c](https://github.com/compliance-framework/plugin-dependabot/commit/ca7ef9c07362988ea01395dff857546b381c8c01))
+* **deps:** update module golang.org/x/crypto to v0.59.0 [security] ([#43](https://github.com/compliance-framework/plugin-dependabot/issues/43)) ([e7a565f](https://github.com/compliance-framework/plugin-dependabot/commit/e7a565faaa3f51e4b769eeede79c6fcdfa4b3121))
+* **deps:** update module golang.org/x/oauth2 to v0.38.0 ([#44](https://github.com/compliance-framework/plugin-dependabot/issues/44)) ([44c6997](https://github.com/compliance-framework/plugin-dependabot/commit/44c699760f55808c52c7bbf6f791e28ed304e396))
+
 ## [0.10.0](https://github.com/compliance-framework/plugin-dependabot/compare/v0.9.0...v0.10.0) (2026-11-02)
 
 
